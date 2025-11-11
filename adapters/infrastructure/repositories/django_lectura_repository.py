@@ -12,10 +12,14 @@ from adapters.infrastructure.models import LecturaModel
 class DjangoLecturaRepository(ILecturaRepository):
     """
     Implementación del Repositorio de Lecturas usando el ORM de Django.
+    Esta clase CUMPLE el contrato definido en ILecturaRepository.
     """
 
     def _to_entity(self, model: LecturaModel) -> Lectura:
-        """Mapeador: Convierte un Modelo de Django a una Entidad de Dominio."""
+        """
+        Mapeador privado: Convierte un Modelo de Django (datos de la BBDD)
+        a una Entidad de Dominio (lógica de negocio pura).
+        """
         return Lectura(
             id=model.id,
             medidor_id=model.medidor_id,
@@ -24,16 +28,37 @@ class DjangoLecturaRepository(ILecturaRepository):
             lectura_anterior_m3=model.lectura_anterior_m3
         )
 
-    def get_latest_by_medidor(self, medidor_id: int) -> Optional[Lectura]:
+    # --- MÉTODO CLAVE QUE FALTABA ---
+    def get_by_id(self, lectura_id: int) -> Optional[Lectura]:
+        """
+        Implementación de get_by_id.
+        Busca una lectura por su Primary Key (ID).
+        Este método es requerido por el GenerarFacturaUseCase.
+        """
         try:
-            # get_latest_by = 'fecha_lectura' (lo definimos en el Modelo)
+            # 1. Usa el ORM de Django para buscar el modelo
+            model = LecturaModel.objects.get(pk=lectura_id)
+            # 2. Traduce el modelo a una entidad y la devuelve
+            return self._to_entity(model)
+        except LecturaModel.DoesNotExist:
+            # Si Django no lo encuentra, devolvemos None
+            return None
+    # ---------------------------------
+
+    def get_latest_by_medidor(self, medidor_id: int) -> Optional[Lectura]:
+        """
+        Obtiene la última lectura registrada para un medidor específico.
+        """
+        try:
             model = LecturaModel.objects.filter(medidor_id=medidor_id).latest()
             return self._to_entity(model)
         except LecturaModel.DoesNotExist:
             return None
 
     def save(self, lectura: Lectura) -> Lectura:
-        """Guarda una nueva lectura."""
+        """
+        Guarda una nueva entidad Lectura en la base de datos.
+        """
         model = LecturaModel(
             medidor_id=lectura.medidor_id,
             fecha_lectura=lectura.fecha_lectura,
@@ -41,4 +66,6 @@ class DjangoLecturaRepository(ILecturaRepository):
             lectura_anterior_m3=lectura.lectura_anterior_m3
         )
         model.save()
-        return self._to_entity(model) # Devolvemos la entidad con el ID
+        
+        lectura.id = model.id
+        return lectura
