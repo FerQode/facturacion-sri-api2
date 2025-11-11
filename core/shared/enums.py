@@ -5,13 +5,13 @@ class EstadoFactura(Enum):
     """
     Representa el estado de una factura.
     """
-    [cite_start]PENDIENTE = "Pendiente"  # Factura sin pago [cite: 31]
-    [cite_start]PAGADA = "Pagada"      # Factura pagada [cite: 30]
+    PENDIENTE = "Pendiente"  # Factura sin pago
+    PAGADA = "Pagada"      # Factura pagada
     ANULADA = "Anulada"
 
 class RolUsuario(Enum):
     """
-    [cite_start]Roles del sistema. [cite: 42]
+    Roles del sistema.
     """
     ADMINISTRADOR = "Administrador"
     TESORERO = "Tesorero"

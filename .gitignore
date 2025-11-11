@@ -15,6 +15,8 @@ db.sqlite3
 # Archivos de configuración local (¡importante!)
 .env
 config/local_settings.py
+# Ignorar la carpeta con la firma electrónica
+/secrets/
 
 # Archivos de IDE
 .idea/

@@ -3,7 +3,7 @@ from decimal import Decimal
 from .socio_model import SocioModel
 from .medidor_model import MedidorModel
 from .lectura_model import LecturaModel
-from core.domain.shared.enums import EstadoFactura
+from core.shared.enums import EstadoFactura
 
 class FacturaModel(models.Model):
     ESTADO_CHOICES = [(estado.value, estado.name) for estado in EstadoFactura]

@@ -10,7 +10,8 @@ from core.use_cases.registrar_lectura_uc import RegistrarLecturaUseCase
 from adapters.infrastructure.repositories.django_lectura_repository import DjangoLecturaRepository
 from adapters.infrastructure.repositories.django_medidor_repository import DjangoMedidorRepository
 # El Serializer (El "Portero")
-from .serializers.lectura_serializers import RegistrarLecturaSerializer
+# LÍNEA CORRECTA
+from adapters.api.serializers.lectura_serializers import RegistrarLecturaSerializer
 # Las Excepciones del Core
 from core.shared.exceptions import MedidorNoEncontradoError
 

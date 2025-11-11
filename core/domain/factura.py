@@ -3,14 +3,14 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal # Usar Decimal para dinero, NUNCA float
 from typing import Optional, List
-from core.domain.shared.enums import EstadoFactura
+from core.shared.enums import EstadoFactura
 from core.domain.lectura import Lectura
 
 # Definimos las constantes de negocio basadas en los requisitos
-[cite_start]TARIFA_BASE_M3: int = 120        # [cite: 11]
-[cite_start]TARIFA_BASE_PRECIO: Decimal = Decimal("3.00")  # [cite: 11]
-[cite_start]TARIFA_EXCEDENTE_PRECIO: Decimal = Decimal("0.50") # [cite: 12]
-[cite_start]TARIFA_FIJA_SIN_MEDIDOR: Decimal = Decimal("5.00") # [cite: 8]
+TARIFA_BASE_M3: int = 120
+TARIFA_BASE_PRECIO: Decimal = Decimal("3.00")
+TARIFA_EXCEDENTE_PRECIO: Decimal = Decimal("0.50")
+TARIFA_FIJA_SIN_MEDIDOR: Decimal = Decimal("5.00")
 
 @dataclass
 class DetalleFactura:
@@ -47,7 +47,7 @@ class Factura:
     def calcular_total_con_medidor(self, consumo_m3: int):
         """
         Calcula el total de la factura para un socio CON medidor.
-        [cite_start]Esta es lógica de negocio pura. [cite: 10, 11, 12]
+        Esta es lógica de negocio pura.
         """
         self.detalles.clear()
         
@@ -91,7 +91,7 @@ class Factura:
 
     def calcular_total_sin_medidor(self):
         """
-        [cite_start]Calcula el total para un socio SIN medidor (tarifa fija). [cite: 8]
+        Calcula el total para un socio SIN medidor (tarifa fija).
         """
         self.detalles.clear()
         self.detalles.append(DetalleFactura(
@@ -106,7 +106,7 @@ class Factura:
 
     def marcar_como_pagada(self):
         """
-        [cite_start]Actualiza el estado de la factura. [cite: 30]
+        Actualiza el estado de la factura.
         """
         if self.estado == EstadoFactura.PENDIENTE:
             self.estado = EstadoFactura.PAGADA

@@ -1,6 +1,6 @@
 from django.db import models
 # Importamos el Enum del core para mantener consistencia
-from core.domain.shared.enums import RolUsuario
+from core.shared.enums import RolUsuario
 
 class SocioModel(models.Model):
     # Usamos 'choices' para mapear el Enum a la BBDD

@@ -8,7 +8,7 @@ from core.domain.socio import Socio
 from core.domain.medidor import Medidor
 from core.domain.lectura import Lectura
 from core.domain.factura import Factura
-from core.domain.shared.enums import EstadoFactura
+from core.shared.enums import EstadoFactura
 
 """
 Interfaces de Repositorio:
@@ -26,7 +26,7 @@ class ISocioRepository(ABC):
 
     @abstractmethod
     def get_by_cedula(self, cedula: str) -> Optional[Socio]:
-        [cite_start]"""Obtiene un socio por su cédula[cite: 27]."""
+        """Obtiene un socio por su cédula."""
         pass
 
     @abstractmethod
@@ -48,7 +48,7 @@ class IMedidorRepository(ABC):
 
     @abstractmethod
     def list_by_socio(self, socio_id: int) -> List[Medidor]:
-        [cite_start]"""Lista todos los medidores de un socio[cite: 9]."""
+        """Lista todos los medidores de un socio."""
         pass
 
     @abstractmethod
@@ -79,12 +79,12 @@ class IFacturaRepository(ABC):
     def list_by_socio_and_date_range(
         self, socio_id: int, fecha_inicio: date, fecha_fin: date
     ) -> List[Factura]:
-        [cite_start]"""Lista facturas de un socio en un rango de fechas[cite: 26, 35]."""
+        """Lista facturas de un socio en un rango de fechas."""
         pass
 
     @abstractmethod
     def list_by_estado(self, estado: EstadoFactura) -> List[Factura]:
-        [cite_start]"""Lista facturas por estado (Pendiente, Pagada)[cite: 32]."""
+        """Lista facturas por estado (Pendiente, Pagada)."""
         pass
 
     @abstractmethod

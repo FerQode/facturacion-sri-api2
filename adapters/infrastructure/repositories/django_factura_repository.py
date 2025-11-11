@@ -6,7 +6,7 @@ from django.db import transaction
 from core.interfaces.repositories import IFacturaRepository
 # Entidades (Clases puras) que el Caso de Uso espera recibir
 from core.domain.factura import Factura, DetalleFactura
-from core.domain.shared.enums import EstadoFactura
+from core.shared.enums import EstadoFactura
 # Modelos (Clases de Django) que usaremos para la BBDD
 from adapters.infrastructure.models import FacturaModel, DetalleFacturaModel, SocioModel, MedidorModel
 

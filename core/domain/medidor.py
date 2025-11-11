@@ -6,13 +6,13 @@ from typing import Optional
 class Medidor:
     """
     Entidad que representa una línea de servicio o medidor de agua.
-    [cite_start]Un socio puede tener uno o varios. [cite: 9]
+    Un socio puede tener uno o varios.
     """
     id: Optional[int]
     codigo: str  # El número/código del medidor
     socio_id: int # El ID del Socio dueño
     esta_activo: bool = True
-    [cite_start]observacion: Optional[str] = None # Para medidores antiguos/inactivos [cite: 5]
+    observacion: Optional[str] = None # Para medidores antiguos/inactivos
     
-    # [cite_start]Si no tiene medidor físico, el cobro es fijo [cite: 8]
+    # Si no tiene medidor físico, el cobro es fijo
     tiene_medidor_fisico: bool = True

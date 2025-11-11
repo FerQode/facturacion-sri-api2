@@ -1,7 +1,7 @@
 # core/domain/socio.py
 from dataclasses import dataclass, field
 from typing import List, Optional
-from core.domain.shared.enums import RolUsuario
+from core.shared.enums import RolUsuario
 
 @dataclass
 class Socio:
@@ -14,11 +14,11 @@ class Socio:
     apellidos: str
     email: Optional[str]
     telefono: Optional[str]
-    [cite_start]barrio: str  # [cite: 53]
+    barrio: str
     rol: RolUsuario = RolUsuario.SOCIO
     esta_activo: bool = True
     
-    # [cite_start]Un socio puede tener múltiples medidores (líneas de servicio) [cite: 9]
+    # Un socio puede tener múltiples medidores (líneas de servicio)
     # Usamos 'List[int]' (IDs) para mantenerlo simple y desacoplado.
     medidores_ids: List[int] = field(default_factory=list)
 
