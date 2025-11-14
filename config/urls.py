@@ -17,11 +17,27 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 
+# --- AÑADIDO --- Importamos las vistas de SimpleJWT
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+)
+
 urlpatterns = [
     path('admin/', admin.site.urls),
-    # --- LÍNEA A AÑADIR ---
-    # Esto le dice a Django:
-    # "Cualquier URL que empiece con 'api/v1/'
-    # envíala al archivo 'adapters.api.urls.py' para que él la maneje"
+
+    # --- AÑADIDO --- Endpoints de Autenticación JWT
+    # 1. El frontend llamará a esta URL para iniciar sesión
+    #    Enviará un JSON con "username" y "password"
+    #    y recibirá los tokens de "access" y "refresh".
+    path('api/v1/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    
+    # 2. El frontend llamará a esta URL para "refrescar" un token
+    #    cuando el de acceso (1 hora) esté por expirar.
+    path('api/v1/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    
+    # --- MODIFICADO --- Mantenemos nuestro enrutador de la API
+    # Ahora, todas las URLs dentro de 'adapters.api.urls'
+    # estarán protegidas por defecto.
     path('api/v1/', include('adapters.api.urls')),
 ]

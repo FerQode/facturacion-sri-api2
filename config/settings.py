@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import dotenv
 import dj_database_url # Importamos para la BBDD
+from datetime import timedelta # --- AÑADIDO --- para la expiración del Token
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -42,6 +43,7 @@ INSTALLED_APPS = [
     # --- Apps de Terceros ---
     'rest_framework',     # Para construir la API REST
     'corsheaders',        # Para permitir peticiones del Frontend
+    'rest_framework_simplejwt', # --- AÑADIDO --- App de Tokens JWT
     
     # --- Apps de nuestra Arquitectura Limpia ---
     'adapters.api.apps.ApiConfig',
@@ -55,7 +57,7 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware', # --- MODIFICADO --- Django Auth debe estar aquí
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -80,7 +82,7 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 
-# --- Base de Datos (PostgreSQL) ---
+# --- Base de Datos (PostgreSQL/MySQL) ---
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 # Lee la variable DATABASE_URL de tu archivo .env
 DATABASES = {
@@ -121,12 +123,32 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- Configuración de Django REST Framework (DRF) ---
+# --- MODIFICADO --- ¡Esta es la configuración de seguridad clave!
 REST_FRAMEWORK = {
+    # 1. Permisos por Defecto:
+    # Exigimos que CUALQUIER endpoint esté autenticado,
+    # a menos que la Vista (View) diga lo contrario.
     'DEFAULT_PERMISSION_CLASSES': [
-        # Por ahora, permitimos el acceso a cualquiera.
-        # Luego lo cambiaremos por 'IsAuthenticated' con JWT.
-        'rest_framework.permissions.AllowAny',
-    ]
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    # 2. Autenticación por Defecto:
+    # Le decimos a DRF que use los Tokens JWT para verificar la identidad.
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+}
+
+# --- AÑADIDO --- Configuración de Simple JWT
+SIMPLE_JWT = {
+    # Define cuánto durará un token de acceso antes de expirar
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60), # 1 hora
+    # Define cuánto durará un token de refresco (para obtener nuevos tokens de acceso)
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+    
+    # Buena Práctica: Para que los tokens de refresco expiren
+    # si el usuario cambia su contraseña.
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
 
 # --- Configuración de CORS (Cross-Origin Resource Sharing) ---
@@ -140,32 +162,32 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 # --- CONFIGURACIÓN PARA EL SRI (Leído desde .env) ---
 # --- CONFIGURACIÓN PARA EL SRI (Leído desde .env) ---
-# Esta sección alimenta a tu 'DjangoSRIService'
 try:
-    # 1. Validar la Contraseña
     SRI_FIRMA_PASS = os.getenv('SRI_FIRMA_PASS')
-    if not SRI_FIRMA_PASS:
-        raise ValueError("¡ERROR DE CONFIGURACIÓN! No se encontró 'SRI_FIRMA_PASS' en tu archivo .env")
-
-    # 2. Validar la RUTA del archivo
-    SRI_FIRMA_PATH = BASE_DIR / 'secrets' / 'el_arbolito.p12'
-    if not SRI_FIRMA_PATH.exists():
-        # Este error te dirá si el archivo no se encuentra
-        raise ValueError(f"¡ERROR DE RUTA! No se encontró el archivo de firma. Buscando en: {SRI_FIRMA_PATH}")
     
-    # 3. Cargar el resto de datos
+    # (Asegúrate de que este sea el nombre correcto de tu archivo .p12)
+    SRI_FIRMA_PATH = BASE_DIR / 'secrets' / 'el_arbolito.p12' 
+    
+    # Datos del Emisor
     SRI_EMISOR_RUC = os.getenv('SRI_EMISOR_RUC')
     SRI_EMISOR_RAZON_SOCIAL = os.getenv('SRI_EMISOR_RAZON_SOCIAL')
     SRI_EMISOR_DIRECCION_MATRIZ = os.getenv('SRI_EMISOR_DIRECCION_MATRIZ')
     SRI_NOMBRE_COMERCIAL = os.getenv('SRI_NOMBRE_COMERCIAL')
     
+    # Series
     SRI_SERIE_ESTABLECIMIENTO = os.getenv('SRI_SERIE_ESTABLECIMIENTO')
     SRI_SERIE_PUNTO_EMISION = os.getenv('SRI_SERIE_PUNTO_EMISION')
     
+    # Ambiente y URLs
     SRI_AMBIENTE = os.getenv('SRI_AMBIENTE', '1') 
     SRI_URL_RECEPCION = os.getenv('SRI_URL_RECEPCION')
     SRI_URL_AUTORIZACION = os.getenv('SRI_URL_AUTORIZACION')
 
+    # Validador mejorado
+    if not SRI_FIRMA_PASS:
+        raise ValueError("¡ERROR DE CONFIGURACIÓN! No se encontró 'SRI_FIRMA_PASS' en tu archivo .env")
+    if not SRI_FIRMA_PATH.exists():
+        raise ValueError(f"¡ERROR DE RUTA! No se encontró el archivo de firma. Buscando en: {SRI_FIRMA_PATH}")
     if not SRI_EMISOR_RUC:
         raise ValueError("Error: Falta el RUC del emisor (SRI_EMISOR_RUC). Revisa tu .env")
 
