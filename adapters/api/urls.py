@@ -27,4 +27,12 @@ urlpatterns = [
         name='generar-factura'
     ),
 
+    # --- ENDPOINT NUEVO (PASO 3 DE LA TESIS) ---
+    # Endpoint 3: Enviar Factura al SRI
+    path(
+        'facturas/enviar-sri/', 
+        factura_views.EnviarFacturaSRIAPIView.as_view(), 
+        name='enviar-factura-sri'
+    ),
+
 ]

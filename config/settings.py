@@ -139,37 +139,36 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 
 # --- CONFIGURACIÓN PARA EL SRI (Leído desde .env) ---
+# --- CONFIGURACIÓN PARA EL SRI (Leído desde .env) ---
 # Esta sección alimenta a tu 'DjangoSRIService'
 try:
+    # 1. Validar la Contraseña
     SRI_FIRMA_PASS = os.getenv('SRI_FIRMA_PASS')
+    if not SRI_FIRMA_PASS:
+        raise ValueError("¡ERROR DE CONFIGURACIÓN! No se encontró 'SRI_FIRMA_PASS' en tu archivo .env")
+
+    # 2. Validar la RUTA del archivo
+    SRI_FIRMA_PATH = BASE_DIR / 'secrets' / 'el_arbolito.p12'
+    if not SRI_FIRMA_PATH.exists():
+        # Este error te dirá si el archivo no se encuentra
+        raise ValueError(f"¡ERROR DE RUTA! No se encontró el archivo de firma. Buscando en: {SRI_FIRMA_PATH}")
     
-    # ¡¡¡IMPORTANTE!!! 
-    # Reemplaza 'nombre_de_tu_firma.p12' con el nombre real de tu archivo
-    # que guardaste en la carpeta /secrets/
-    SRI_FIRMA_PATH = BASE_DIR / 'secrets' / 'el-arbolito.p12'
-    
-    # Datos del Emisor (Junta de Riego)
+    # 3. Cargar el resto de datos
     SRI_EMISOR_RUC = os.getenv('SRI_EMISOR_RUC')
     SRI_EMISOR_RAZON_SOCIAL = os.getenv('SRI_EMISOR_RAZON_SOCIAL')
     SRI_EMISOR_DIRECCION_MATRIZ = os.getenv('SRI_EMISOR_DIRECCION_MATRIZ')
     SRI_NOMBRE_COMERCIAL = os.getenv('SRI_NOMBRE_COMERCIAL')
     
-    # Series
     SRI_SERIE_ESTABLECIMIENTO = os.getenv('SRI_SERIE_ESTABLECIMIENTO')
     SRI_SERIE_PUNTO_EMISION = os.getenv('SRI_SERIE_PUNTO_EMISION')
     
-    # Ambiente y URLs
-    SRI_AMBIENTE = os.getenv('SRI_AMBIENTE', '1') # '1' (Pruebas) por defecto
+    SRI_AMBIENTE = os.getenv('SRI_AMBIENTE', '1') 
     SRI_URL_RECEPCION = os.getenv('SRI_URL_RECEPCION')
-    SRI_URL_AUTORIZACION = os.getenv('SRI_URL_AUTORIZION')
+    SRI_URL_AUTORIZACION = os.getenv('SRI_URL_AUTORIZACION')
 
-    # Validador para asegurar que los archivos y secretos existen
-    if not SRI_FIRMA_PASS or not SRI_FIRMA_PATH.exists():
-        raise ValueError("Error: Falta la firma (SRI_FIRMA_PATH) o la contraseña (SRI_FIRMA_PASS). Revisa tu .env y la carpeta /secrets/")
     if not SRI_EMISOR_RUC:
         raise ValueError("Error: Falta el RUC del emisor (SRI_EMISOR_RUC). Revisa tu .env")
 
 except Exception as e:
-    # Si algo falla al cargar, la aplicación no se iniciará.
     print(f"Error CRÍTICO al cargar la configuración del SRI: {e}")
     raise e

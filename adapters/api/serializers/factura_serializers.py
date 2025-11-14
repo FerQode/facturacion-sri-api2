@@ -41,3 +41,12 @@ class GenerarFacturaSerializer(serializers.Serializer):
         # 5. Devolvemos los datos limpios y validados
         # Estos datos (data) son los que se pasarán al DTO del Caso de Uso.
         return data
+    
+    # --- AÑADIR ESTA NUEVA CLASE AL FINAL ---
+
+class EnviarFacturaSRISerializer(serializers.Serializer):
+    """
+    Valida el JSON de entrada para el Caso de Uso EnviarFacturaSRIUseCase.
+    Solo necesita el ID de la factura que ya existe.
+    """
+    factura_id = serializers.IntegerField(required=True)

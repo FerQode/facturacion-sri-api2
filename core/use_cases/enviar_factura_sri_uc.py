@@ -1,7 +1,12 @@
 # core/use_cases/enviar_factura_sri_uc.py
+
+# Importamos las interfaces que necesita
 from core.interfaces.repositories import IFacturaRepository, ISocioRepository
 from core.interfaces.services import ISRIService, SRIResponse
-from core.shared.exceptions import FacturaNoEncontradaError, FacturaEstadoError
+# Importamos las excepciones que puede lanzar
+from core.shared.exceptions import FacturaNoEncontradaError, FacturaEstadoError, SocioNoEncontradoError
+# ¡¡¡IMPORTACIÓN AÑADIDA!!!
+from core.shared.enums import EstadoFactura
 
 class EnviarFacturaSRIUseCase:
     """
@@ -24,31 +29,37 @@ class EnviarFacturaSRIUseCase:
         if not factura:
             raise FacturaNoEncontradaError("Factura no encontrada.")
             
-        if factura.estado != "PENDIENTE":
+        # ¡¡¡LÍNEA CORREGIDA!!!
+        # Comparamos Objeto Enum vs Objeto Enum
+        if factura.estado != EstadoFactura.PENDIENTE:
              raise FacturaEstadoError("Solo se pueden enviar facturas pendientes.")
         
-        # (Aquí también buscaríamos al socio para completar datos del SRI)
-        # socio = self.socio_repo.get_by_id(factura.socio_id)
-        # ...y pasarle al servicio los datos completos que necesita.
+        # 2. Necesitamos los datos del Socio (Comprador) para el XML
+        socio = self.socio_repo.get_by_id(factura.socio_id)
+        if not socio:
+            raise SocioNoEncontradoError(f"El socio {factura.socio_id} de esta factura no fue encontrado.")
 
-        # 2. Delegar TODA la lógica del SRI al servicio
-        #    Aquí es donde GenAI te ayudará a implementar ISRIService
-        #    para generar XML, firmar y consumir el Web Service SOAP/REST.
+        # 3. Delegar TODA la lógica del SRI al servicio
+        print(f"Enviando factura {factura.id} (Socio: {socio.cedula}) al SRI...")
+        sri_response = self.sri_service.enviar_factura(factura, socio)
         
-        print(f"Enviando factura {factura.id} al SRI...")
-        sri_response = self.sri_service.enviar_factura(factura)
-        
-        # 3. Actualizar la factura con la respuesta
-        if sri_response.exito and sri_response.estado == "AUTORIZADO":
+        # 4. Actualizar la factura con la respuesta
+        if sri_response.exito and sri_response.estado == "RECIBIDA":
+            # (En un futuro, aquí cambiarías el estado_sri a "ENVIADA")
             factura.clave_acceso_sri = sri_response.autorizacion_id
-            factura.estado_sri = "AUTORIZADO"
-            print(f"Factura {factura.id} autorizada.")
+            factura.estado_sri = sri_response.estado # "RECIBIDA"
+            factura.xml_enviado_sri = sri_response.xml_enviado
+            factura.xml_respuesta_sri = sri_response.xml_respuesta
+            print(f"Factura {factura.id} recibida por el SRI.")
         else:
-            factura.estado_sri = "RECHAZADO"
+            # Si fue "DEVUELTA" o hubo un "ERROR"
+            factura.estado_sri = sri_response.estado
             factura.mensaje_sri = sri_response.mensaje_error
-            print(f"Factura {factura.id} rechazada: {sri_response.mensaje_error}")
+            factura.xml_enviado_sri = sri_response.xml_enviado
+            factura.xml_respuesta_sri = sri_response.xml_respuesta
+            print(f"Factura {factura.id} rechazada por el SRI: {sri_response.mensaje_error}")
 
-        # 4. Guardar los cambios
+        # 5. Guardar los cambios en la BBDD (el estado_sri, clave_acceso, etc.)
         self.factura_repo.save(factura)
         
         return sri_response
