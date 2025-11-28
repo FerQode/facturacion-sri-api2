@@ -119,3 +119,15 @@ class DjangoFacturaRepository(IFacturaRepository):
         """Busca facturas por estado (Pendiente, Pagada)."""
         models = FacturaModel.objects.prefetch_related('detalles').filter(estado=estado.value)
         return [self._to_entity(m) for m in models]
+    
+    # --- MÉTODO NUEVO A AÑADIR ---
+    def get_by_clave_acceso(self, clave_acceso: str) -> Optional[Factura]:
+        """Implementa el método del contrato: Busca una factura por su clave_acceso_sri."""
+        try:
+            # prefetch_related no es tan necesario aquí, pero lo mantenemos
+            # por consistencia con _to_entity
+            model = FacturaModel.objects.prefetch_related('detalles').get(clave_acceso_sri=clave_acceso)
+            return self._to_entity(model)
+        except FacturaModel.DoesNotExist:
+            return None
+    # ----------------------------

@@ -6,11 +6,11 @@ from .views import lectura_views
 from .views import factura_views
 from .views import socio_views # <--- ¡NUEVA IMPORTACIÓN!
 
-# --- BUENA PRÁCTICA: Usar Routers para ViewSets ---
+# --- BUENA PRÁCTICA: Usar Routers para ViewSets (Paso B) ---
 # 1. Creamos un router
 router = DefaultRouter()
 
-# 2. Registramos nuestro ViewSet.
+# 2. Registramos nuestro ViewSet de Socios.
 #    DRF generará automáticamente:
 #    - GET /socios/ (para list)
 #    - POST /socios/ (para create)
@@ -39,8 +39,15 @@ urlpatterns = [
         factura_views.EnviarFacturaSRIAPIView.as_view(), 
         name='enviar-factura-sri'
     ),
+    # --- URL del PASO C (Consultar Autorización) ---
+    path(
+        'facturas/consultar/', 
+        factura_views.ConsultarAutorizacionAPIView.as_view(), 
+        name='consultar-autorizacion-sri'
+    ),
     
-    # --- Rutas CRUD (manejadas por el Router) ---
-    # Incluimos las URLs generadas por el router
+    
+    # --- Rutas CRUD (manejadas por el Router - PASO B) ---
+    # Incluimos las URLs generadas por el router (ej: /socios/)
     path('', include(router.urls)),
 ]

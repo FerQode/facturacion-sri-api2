@@ -19,12 +19,6 @@ class RegistrarLecturaDTO:
     fecha_lectura: date
     operador_id: int # Para auditoría
 
-# --- DTOs para Factura ---
-@dataclass(frozen=True)
-class GenerarFacturaDesdeLecturaDTO:
-    lectura_id: int
-    fecha_emision: date
-    fecha_vencimiento: date
 
 # --- DTOs para Pago ---
 @dataclass(frozen=True)

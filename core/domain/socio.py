@@ -12,14 +12,20 @@ class Socio:
     cedula: str
     nombres: str
     apellidos: str
-    email: Optional[str]
-    telefono: Optional[str]
     barrio: str
+    
+    # --- CAMPOS OPCIONALES (Con valor por defecto) ---
+    # Deben ir DESPUÉS de los campos obligatorios para evitar el TypeError
+    
+    email: Optional[str] = None
+    telefono: Optional[str] = None
     rol: RolUsuario = RolUsuario.SOCIO
     esta_activo: bool = True
     
+    # Vinculación con el sistema de autenticación (ID del User de Django)
+    usuario_id: Optional[int] = None 
+    
     # Un socio puede tener múltiples medidores (líneas de servicio)
-    # Usamos 'List[int]' (IDs) para mantenerlo simple y desacoplado.
     medidores_ids: List[int] = field(default_factory=list)
 
     def nombre_completo(self) -> str:

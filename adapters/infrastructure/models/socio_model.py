@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.auth.models import User # <-- Importamos el usuario de Django
 # Importamos el Enum del core para mantener consistencia
 from core.shared.enums import RolUsuario
 
@@ -14,6 +15,8 @@ class SocioModel(models.Model):
     barrio = models.CharField(max_length=100)
     rol = models.CharField(max_length=50, choices=ROL_CHOICES, default=RolUsuario.SOCIO.value)
     esta_activo = models.BooleanField(default=True)
+
+    usuario = models.OneToOneField(User, on_delete=models.CASCADE, null=True, blank=True, related_name='perfil_socio')
 
     class Meta:
         db_table = 'socios' # Nombre de la tabla en PostgreSQL

@@ -75,6 +75,13 @@ class IFacturaRepository(ABC):
         """Obtiene una factura por su ID."""
         pass
 
+    # --- MÉTODO NUEVO A AÑADIR ---
+    @abstractmethod
+    def get_by_clave_acceso(self, clave_acceso: str) -> Optional[Factura]:
+        """Obtiene una factura por su clave de acceso del SRI."""
+        pass
+    # ----------------------------
+
     @abstractmethod
     def list_by_socio_and_date_range(
         self, socio_id: int, fecha_inicio: date, fecha_fin: date
@@ -91,3 +98,13 @@ class IFacturaRepository(ABC):
     def save(self, factura: Factura) -> Factura:
         """Guarda o actualiza una factura."""
         pass
+class IAuthRepository(ABC):
+    @abstractmethod
+    def crear_usuario(self, username: str, password: str, email: str = None, rol: 'RolUsuario' = None) -> int:
+        pass
+
+    @abstractmethod
+    def desactivar_usuario(self, user_id: int) -> None:
+        pass
+
+    

@@ -50,3 +50,16 @@ class EnviarFacturaSRISerializer(serializers.Serializer):
     Solo necesita el ID de la factura que ya existe.
     """
     factura_id = serializers.IntegerField(required=True)
+
+# --- SERIALIZER NUEVO A AÑADIR ---
+
+class ConsultarAutorizacionSerializer(serializers.Serializer):
+    """
+    Valida el JSON de entrada para el Caso de Uso ConsultarAutorizacionUseCase.
+    Valida que la clave de acceso tenga la longitud correcta.
+    """
+    clave_acceso = serializers.CharField(
+        required=True,
+        min_length=49,
+        max_length=49
+    )

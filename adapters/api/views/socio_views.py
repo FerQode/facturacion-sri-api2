@@ -3,8 +3,11 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser # <-- ¡Mejora de Seguridad!
 
-# Importamos el "traductor" de BBDD
+# Importamos los "traductores" de BBDD
 from adapters.infrastructure.repositories.django_socio_repository import DjangoSocioRepository
+# --- NUEVO IMPORT ---
+from adapters.infrastructure.repositories.django_auth_repository import DjangoAuthRepository
+
 # Importamos los "porteros" (Serializers)
 from adapters.api.serializers.socio_serializers import (
     SocioSerializer, CrearSocioSerializer, ActualizarSocioSerializer
@@ -60,8 +63,12 @@ class SocioViewSet(viewsets.ViewSet):
         crear_dto = CrearSocioDTO(**serializer.validated_data)
         
         # 3. Ejecutar el "Cerebro"
-        repo = DjangoSocioRepository()
-        use_case = CrearSocioUseCase(repo)
+        socio_repo = DjangoSocioRepository()
+        auth_repo = DjangoAuthRepository() # <-- Instanciamos el repo de Auth
+        
+        # --- PASAMOS AMBOS REPOS ---
+        use_case = CrearSocioUseCase(socio_repo, auth_repo)
+        
         try:
             socio_creado_dto = use_case.execute(crear_dto)
             # 4. Devolver la respuesta
@@ -97,8 +104,12 @@ class SocioViewSet(viewsets.ViewSet):
 
     def destroy(self, request, pk=None):
         """ DELETE /api/v1/socios/<pk>/ """
-        repo = DjangoSocioRepository()
-        use_case = EliminarSocioUseCase(repo)
+        socio_repo = DjangoSocioRepository()
+        auth_repo = DjangoAuthRepository() # <-- Instanciamos el repo de Auth
+        
+        # --- TAMBIÉN AQUÍ NECESITAMOS LOS DOS REPOS ---
+        use_case = EliminarSocioUseCase(socio_repo, auth_repo)
+        
         try:
             use_case.execute(int(pk))
             return Response(status=status.HTTP_204_NO_CONTENT)

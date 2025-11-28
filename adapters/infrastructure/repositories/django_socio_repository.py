@@ -1,39 +1,34 @@
 # adapters/infrastructure/repositories/django_socio_repository.py
 
 from typing import List, Optional
-
-# El Contrato (Interfaz) que vamos a implementar
 from core.interfaces.repositories import ISocioRepository
-# La Entidad (Clase pura de Python) que el "cerebro" entiende
 from core.domain.socio import Socio
-# El Modelo (Clase de Django) que habla con la BBDD
 from adapters.infrastructure.models import SocioModel
-# El Enum que necesitamos (recuerda la ruta corregida)
 from core.shared.enums import RolUsuario
 
 class DjangoSocioRepository(ISocioRepository):
     """
     Implementación del Repositorio de Socios usando el ORM de Django.
-    Este es el "traductor" entre la lógica de Socios y la BBDD.
     """
 
     def _to_entity(self, model: SocioModel) -> Socio:
-        """Mapeador privado: Convierte un Modelo de Django a una Entidad de Dominio."""
+        """Mapeador: Modelo -> Entidad"""
         return Socio(
             id=model.id,
+            # --- MAPEO DEL NUEVO CAMPO ---
+            usuario_id=model.usuario.id if model.usuario else None,
+            # -----------------------------
             cedula=model.cedula,
             nombres=model.nombres,
             apellidos=model.apellidos,
             email=model.email,
             telefono=model.telefono,
             barrio=model.barrio,
-            rol=RolUsuario(model.rol), # Convertimos el string de la BBDD a un Enum
+            rol=RolUsuario(model.rol),
             esta_activo=model.esta_activo
-            # 'medidores_ids' se puede cargar aquí si un Caso de Uso lo necesita
         )
 
     def get_by_id(self, socio_id: int) -> Optional[Socio]:
-        """Implementa el método del contrato: Busca un socio por su ID."""
         try:
             model = SocioModel.objects.get(pk=socio_id)
             return self._to_entity(model)
@@ -41,7 +36,6 @@ class DjangoSocioRepository(ISocioRepository):
             return None
 
     def get_by_cedula(self, cedula: str) -> Optional[Socio]:
-        """Implementa el método del contrato: Busca un socio por su cédula."""
         try:
             model = SocioModel.objects.get(cedula=cedula)
             return self._to_entity(model)
@@ -49,14 +43,13 @@ class DjangoSocioRepository(ISocioRepository):
             return None
 
     def list_all(self) -> List[Socio]:
-        """Implementa el método del contrato: Lista todos los socios."""
         models = SocioModel.objects.all()
         return [self._to_entity(model) for model in models]
 
     def save(self, socio: Socio) -> Socio:
-        """Implementa el método del contrato: Guarda o actualiza un socio."""
+        """Guarda o actualiza un socio."""
         if socio.id:
-            # Actualizar un socio existente
+            # Update
             model = SocioModel.objects.get(pk=socio.id)
             model.nombres = socio.nombres
             model.apellidos = socio.apellidos
@@ -65,9 +58,15 @@ class DjangoSocioRepository(ISocioRepository):
             model.barrio = socio.barrio
             model.rol = socio.rol.value
             model.esta_activo = socio.esta_activo
+            # Si se asigna/cambia el usuario
+            if socio.usuario_id:
+                model.usuario_id = socio.usuario_id
         else:
-            # Crear un nuevo socio
+            # Create
             model = SocioModel(
+                # --- GUARDADO DEL NUEVO CAMPO ---
+                usuario_id=socio.usuario_id, 
+                # --------------------------------
                 cedula=socio.cedula,
                 nombres=socio.nombres,
                 apellidos=socio.apellidos,
@@ -79,5 +78,5 @@ class DjangoSocioRepository(ISocioRepository):
             )
         
         model.save()
-        socio.id = model.id # Devolvemos el ID a la entidad
+        socio.id = model.id
         return socio

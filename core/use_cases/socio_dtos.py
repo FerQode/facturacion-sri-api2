@@ -26,6 +26,9 @@ class CrearSocioDTO:
     rol: RolUsuario # Usamos el Enum para la lógica interna
     email: Optional[str] = None
     telefono: Optional[str] = None
+    # --- NUEVOS CAMPOS ---
+    username: Optional[str] = None # Opcional, si no viene usamos la cédula
+    password: Optional[str] = None # Opcional, si no viene generamos una
 
 # DTO de entrada para actualizar (todos los campos opcionales)
 @dataclass(frozen=True)
