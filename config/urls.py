@@ -17,27 +17,25 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 
-# --- AÑADIDO --- Importamos las vistas de SimpleJWT
+# --- AÑADIDO: Importamos nuestra vista personalizada ---
+from adapters.api.views.auth_views import CustomTokenObtainPairView
+
+# Importamos la vista de refresh (esa la usamos tal cual de la librería)
 from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
     TokenRefreshView,
 )
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-
-    # --- AÑADIDO --- Endpoints de Autenticación JWT
-    # 1. El frontend llamará a esta URL para iniciar sesión
-    #    Enviará un JSON con "username" y "password"
-    #    y recibirá los tokens de "access" y "refresh".
-    path('api/v1/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     
-    # 2. El frontend llamará a esta URL para "refrescar" un token
-    #    cuando el de acceso (1 hora) esté por expirar.
+    # --- MODIFICADO: Endpoint de Login ---
+    # Usamos CustomTokenObtainPairView en lugar de la vista por defecto (TokenObtainPairView).
+    # Cuando el frontend llame aquí, recibirá el token con 'rol' y 'socio_id' en el payload.
+    path('api/v1/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
+    
+    # Endpoint de Refresh (estándar)
     path('api/v1/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     
-    # --- MODIFICADO --- Mantenemos nuestro enrutador de la API
-    # Ahora, todas las URLs dentro de 'adapters.api.urls'
-    # estarán protegidas por defecto.
+    # Rutas de la API (nuestros adaptadores)
     path('api/v1/', include('adapters.api.urls')),
 ]
