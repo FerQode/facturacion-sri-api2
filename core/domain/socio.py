@@ -12,18 +12,22 @@ class Socio:
     cedula: str
     nombres: str
     apellidos: str
+    # email y telefono son opcionales en el DTO pero aquí parecen obligatorios en tu versión anterior
+    # Si quieres que sean opcionales con default None, deben ir al final.
+    # Asumiremos que email y telefono TIENEN valor por defecto None basado en tu error.
+    
+    # Campos obligatorios (sin default)
     barrio: str
-    
-    # --- CAMPOS OPCIONALES (Con valor por defecto) ---
-    # Deben ir DESPUÉS de los campos obligatorios para evitar el TypeError
-    
+
+    # Campos opcionales (con default) - DEBEN IR AL FINAL
     email: Optional[str] = None
     telefono: Optional[str] = None
     rol: RolUsuario = RolUsuario.SOCIO
     esta_activo: bool = True
     
-    # Vinculación con el sistema de autenticación (ID del User de Django)
+    # --- CAMPO NUEVO (MOVIDO AL FINAL) ---
     usuario_id: Optional[int] = None 
+    # -------------------------------------
     
     # Un socio puede tener múltiples medidores (líneas de servicio)
     medidores_ids: List[int] = field(default_factory=list)
