@@ -8,7 +8,7 @@ from core.domain.socio import Socio
 from core.domain.medidor import Medidor
 from core.domain.lectura import Lectura
 from core.domain.factura import Factura
-from core.shared.enums import EstadoFactura
+from core.shared.enums import EstadoFactura, RolUsuario # Asegúrate de importar RolUsuario si se usa
 
 """
 Interfaces de Repositorio:
@@ -64,6 +64,11 @@ class ILecturaRepository(ABC):
         pass
 
     @abstractmethod
+    def get_by_id(self, lectura_id: int) -> Optional[Lectura]:
+        "..."
+        pass
+
+    @abstractmethod
     def save(self, lectura: Lectura) -> Lectura:
         """Guarda una nueva lectura."""
         pass
@@ -98,13 +103,21 @@ class IFacturaRepository(ABC):
     def save(self, factura: Factura) -> Factura:
         """Guarda o actualiza una factura."""
         pass
+
+# --- INTERFAZ ACTULIZADA ---
 class IAuthRepository(ABC):
     @abstractmethod
     def crear_usuario(self, username: str, password: str, email: str = None, rol: 'RolUsuario' = None) -> int:
+        "Crea un uduario y devuelve su ID"
         pass
 
     @abstractmethod
     def desactivar_usuario(self, user_id: int) -> None:
+        "Desactiva un usuario (Soft Delete)"
         pass
 
-    
+    @abstractmethod
+    def activar_usuario(self, user_id: int) -> None:
+        "Reactivar un usurario previamente desactivado"
+        pass
+
