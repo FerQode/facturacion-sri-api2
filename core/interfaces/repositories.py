@@ -8,7 +8,8 @@ from core.domain.socio import Socio
 from core.domain.medidor import Medidor
 from core.domain.lectura import Lectura
 from core.domain.factura import Factura
-from core.shared.enums import EstadoFactura, RolUsuario # Asegúrate de importar RolUsuario si se usa
+from core.domain.barrio import Barrio # <--- ¡IMPORTACIÓN DEL NUEVO DOMINIO!
+from core.shared.enums import EstadoFactura, RolUsuario
 
 """
 Interfaces de Repositorio:
@@ -38,6 +39,11 @@ class ISocioRepository(ABC):
     def save(self, socio: Socio) -> Socio:
         """Guarda o actualiza un socio en la BBDD."""
         pass
+    
+    @abstractmethod
+    def get_by_usuario_id(self, usuario_id: int) -> Optional[Socio]:
+        """Obtiene el socio vinculado a un ID de usuario de Django."""
+        pass
 
 class IMedidorRepository(ABC):
 
@@ -49,6 +55,16 @@ class IMedidorRepository(ABC):
     @abstractmethod
     def list_by_socio(self, socio_id: int) -> List[Medidor]:
         """Lista todos los medidores de un socio."""
+        pass
+    
+    @abstractmethod
+    def list_all(self) -> List[Medidor]:
+        """Lista todos los medidores del sistema."""
+        pass
+    
+    @abstractmethod
+    def get_by_codigo(self, codigo: str) -> Optional[Medidor]:
+        """Busca un medidor por su código único."""
         pass
 
     @abstractmethod
@@ -62,10 +78,10 @@ class ILecturaRepository(ABC):
     def get_latest_by_medidor(self, medidor_id: int) -> Optional[Lectura]:
         """Obtiene la última lectura registrada para un medidor."""
         pass
-
+    
     @abstractmethod
     def get_by_id(self, lectura_id: int) -> Optional[Lectura]:
-        "..."
+        """Obtiene una lectura específica por su ID."""
         pass
 
     @abstractmethod
@@ -80,18 +96,21 @@ class IFacturaRepository(ABC):
         """Obtiene una factura por su ID."""
         pass
 
-    # --- MÉTODO NUEVO A AÑADIR ---
     @abstractmethod
     def get_by_clave_acceso(self, clave_acceso: str) -> Optional[Factura]:
         """Obtiene una factura por su clave de acceso del SRI."""
         pass
-    # ----------------------------
 
     @abstractmethod
     def list_by_socio_and_date_range(
         self, socio_id: int, fecha_inicio: date, fecha_fin: date
     ) -> List[Factura]:
         """Lista facturas de un socio en un rango de fechas."""
+        pass
+    
+    @abstractmethod
+    def list_by_socio(self, socio_id: int) -> List[Factura]:
+        """Lista todas las facturas de un socio."""
         pass
 
     @abstractmethod
@@ -104,20 +123,51 @@ class IFacturaRepository(ABC):
         """Guarda o actualiza una factura."""
         pass
 
-# --- INTERFAZ ACTULIZADA ---
 class IAuthRepository(ABC):
     @abstractmethod
     def crear_usuario(self, username: str, password: str, email: str = None, rol: 'RolUsuario' = None) -> int:
-        "Crea un uduario y devuelve su ID"
+        """Crea un usuario y devuelve su ID."""
         pass
 
     @abstractmethod
     def desactivar_usuario(self, user_id: int) -> None:
-        "Desactiva un usuario (Soft Delete)"
+        """Desactiva un usuario (Soft Delete)."""
         pass
 
     @abstractmethod
     def activar_usuario(self, user_id: int) -> None:
-        "Reactivar un usurario previamente desactivado"
+        """Reactiva un usuario previamente desactivado."""
         pass
 
+# --- NUEVA INTERFAZ PARA BARRIOS ---
+class IBarrioRepository(ABC):
+    """
+    Contrato para el manejo de persistencia de Barrios.
+    """
+    @abstractmethod
+    def list_all(self) -> List[Barrio]:
+        """Lista todos los barrios registrados."""
+        pass
+
+    @abstractmethod
+    def get_by_id(self, barrio_id: int) -> Optional[Barrio]:
+        """Obtiene un barrio por su ID."""
+        pass
+    
+    @abstractmethod
+    def get_by_nombre(self, nombre: str) -> Optional[Barrio]:
+        """
+        Busca un barrio por su nombre exacto.
+        Útil para validar unicidad antes de crear/actualizar.
+        """
+        pass
+
+    @abstractmethod
+    def save(self, barrio: Barrio) -> Barrio:
+        """Guarda o actualiza un barrio en la base de datos."""
+        pass
+    
+    @abstractmethod
+    def delete(self, barrio_id: int) -> None:
+        """Elimina (o desactiva) un barrio."""
+        pass

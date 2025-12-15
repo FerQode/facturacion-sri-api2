@@ -1,3 +1,4 @@
+# adapters/api/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
@@ -5,19 +6,16 @@ from rest_framework.routers import DefaultRouter
 from .views import lectura_views 
 from .views import factura_views
 from .views import socio_views
-from .views import medidor_views # <--- ¡IMPORTACIÓN AÑADIDA!
+from .views import medidor_views
+from .views import barrio_views # <--- ¡NUEVA IMPORTACIÓN!
 
 # --- BUENA PRÁCTICA: Usar Routers para ViewSets ---
-# 1. Creamos un router
 router = DefaultRouter()
 
-# 2. Registramos nuestros ViewSets CRUD
-#    Esto genera automáticamente URLs como:
-#    - GET /socios/ y /medidores/
-#    - POST /socios/ y /medidores/
-#    - etc.
+# Registros CRUD
 router.register(r'socios', socio_views.SocioViewSet, basename='socio')
-router.register(r'medidores', medidor_views.MedidorViewSet, basename='medidor') # <--- ¡REGISTRO AÑADIDO!
+router.register(r'medidores', medidor_views.MedidorViewSet, basename='medidor')
+router.register(r'barrios', barrio_views.BarrioViewSet, basename='barrio') # <--- ¡REGISTRO AÑADIDO!
 
 
 # Estas son nuestras URLs de API.
@@ -50,6 +48,5 @@ urlpatterns = [
     # ),
     
     # --- Rutas CRUD (manejadas por el Router) ---
-    # Incluimos las URLs generadas por el router (ej: /socios/, /medidores/)
     path('', include(router.urls)),
 ]
