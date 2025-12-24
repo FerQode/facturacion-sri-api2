@@ -1,71 +1,94 @@
 # adapters/infrastructure/repositories/django_lectura_repository.py
 
-from typing import Optional
+from typing import List, Optional
 
-# Contratos (Interfaces) que vamos a implementar
+# Contratos (Interfaces)
 from core.interfaces.repositories import ILecturaRepository
-# Entidades (Clases puras) que el Caso de Uso espera recibir
+# Entidades (Dominio)
 from core.domain.lectura import Lectura
-# Modelos (Clases de Django) que usaremos para la BBDD
-from adapters.infrastructure.models import LecturaModel
+# Modelos (Base de Datos)
+from adapters.infrastructure.models.lectura_model import LecturaModel
 
 class DjangoLecturaRepository(ILecturaRepository):
     """
     Implementación del Repositorio de Lecturas usando el ORM de Django.
-    Esta clase CUMPLE el contrato definido en ILecturaRepository.
+    Actualizado para Fase 4 (Soporte de decimales y nuevos campos).
     """
 
     def _to_entity(self, model: LecturaModel) -> Lectura:
         """
-        Mapeador privado: Convierte un Modelo de Django (datos de la BBDD)
-        a una Entidad de Dominio (lógica de negocio pura).
+        Mapeador: Modelo Django -> Entidad Dominio.
         """
         return Lectura(
             id=model.id,
             medidor_id=model.medidor_id,
-            fecha_lectura=model.fecha_lectura,
-            lectura_actual_m3=model.lectura_actual_m3,
-            lectura_anterior_m3=model.lectura_anterior_m3
+            
+            # --- CAMBIOS CRÍTICOS ---
+            # 1. Mapeamos 'valor' (Decimal en BDD) a float (Entidad)
+            valor=float(model.valor), 
+            
+            # 2. Mapeamos 'fecha' (antes fecha_lectura)
+            fecha=model.fecha,
+            
+            # 3. Nuevos campos de auditoría
+            observacion=model.observacion,
+            esta_facturada=model.esta_facturada
+            
+            # Nota: 'lectura_anterior' es opcional en la entidad y no se guarda 
+            # en la fila actual del modelo, por eso no lo asignamos aquí 
+            # (se calcula en tiempo de ejecución si se necesita).
         )
 
-    # --- MÉTODO CLAVE QUE FALTABA ---
     def get_by_id(self, lectura_id: int) -> Optional[Lectura]:
-        """
-        Implementación de get_by_id.
-        Busca una lectura por su Primary Key (ID).
-        Este método es requerido por el GenerarFacturaUseCase.
-        """
         try:
-            # 1. Usa el ORM de Django para buscar el modelo
             model = LecturaModel.objects.get(pk=lectura_id)
-            # 2. Traduce el modelo a una entidad y la devuelve
             return self._to_entity(model)
         except LecturaModel.DoesNotExist:
-            # Si Django no lo encuentra, devolvemos None
             return None
-    # ---------------------------------
 
     def get_latest_by_medidor(self, medidor_id: int) -> Optional[Lectura]:
         """
-        Obtiene la última lectura registrada para un medidor específico.
+        Obtiene la última lectura registrada para un medidor.
+        Vital para calcular el consumo del siguiente mes.
         """
         try:
+            # Usamos 'latest()' basado en el 'get_latest_by' definido en el Meta del modelo
             model = LecturaModel.objects.filter(medidor_id=medidor_id).latest()
             return self._to_entity(model)
         except LecturaModel.DoesNotExist:
             return None
 
+    def list_by_medidor_id(self, medidor_id: int) -> List[Lectura]:
+        """
+        Devuelve el historial de lecturas de un medidor.
+        """
+        models = LecturaModel.objects.filter(medidor_id=medidor_id).order_by('-fecha')
+        return [self._to_entity(m) for m in models]
+
     def save(self, lectura: Lectura) -> Lectura:
         """
-        Guarda una nueva entidad Lectura en la base de datos.
+        Guarda o actualiza una lectura.
         """
-        model = LecturaModel(
-            medidor_id=lectura.medidor_id,
-            fecha_lectura=lectura.fecha_lectura,
-            lectura_actual_m3=lectura.lectura_actual_m3,
-            lectura_anterior_m3=lectura.lectura_anterior_m3
-        )
+        if lectura.id:
+            # Update
+            try:
+                model = LecturaModel.objects.get(pk=lectura.id)
+            except LecturaModel.DoesNotExist:
+                model = LecturaModel()
+        else:
+            # Create
+            model = LecturaModel()
+
+        # Mapeo Entidad -> Modelo
+        model.medidor_id = lectura.medidor_id
+        
+        # --- CAMBIOS CRÍTICOS ---
+        model.valor = lectura.valor  # Guardamos en el campo nuevo
+        model.fecha = lectura.fecha
+        model.observacion = lectura.observacion
+        model.esta_facturada = lectura.esta_facturada
+        
         model.save()
         
-        lectura.id = model.id
-        return lectura
+        # Devolvemos la entidad con el ID generado
+        return self._to_entity(model)

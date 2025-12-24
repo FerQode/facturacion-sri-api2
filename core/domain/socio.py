@@ -1,40 +1,48 @@
 # core/domain/socio.py
-from dataclasses import dataclass, field
-from typing import List, Optional
+
+from dataclasses import dataclass
+from typing import Optional
+from datetime import date
 from core.shared.enums import RolUsuario
 
 @dataclass
 class Socio:
     """
-    Entidad que representa a un socio de la junta de riego.
+    Entidad de Dominio que representa a un socio de la junta.
+    Actualizada para Fase 3 y 4 (Infraestructura y API).
     """
+    # 1. CAMPOS OBLIGATORIOS (Sin valor por defecto)
     id: Optional[int]
     cedula: str
     nombres: str
     apellidos: str
-    # email y telefono son opcionales en el DTO pero aquí parecen obligatorios en tu versión anterior
-    # Si quieres que sean opcionales con default None, deben ir al final.
-    # Asumiremos que email y telefono TIENEN valor por defecto None basado en tu error.
     
-    # Campos obligatorios (sin default)
-    barrio: str
-
-    # Campos opcionales (con default) - DEBEN IR AL FINAL
+    # 2. CAMPOS OPCIONALES (Con valor por defecto = None o un valor fijo)
+    # NOTA: En Python dataclasses, los campos con defaults deben ir AL FINAL.
+    
     email: Optional[str] = None
     telefono: Optional[str] = None
-    rol: RolUsuario = RolUsuario.SOCIO
+    
+    # --- CORRECCIÓN CRÍTICA: Campos nuevos que envía el Repositorio ---
+    # Reemplazamos 'barrio: str' por 'barrio_id' y agregamos 'direccion'
+    barrio_id: Optional[int] = None
+    direccion: Optional[str] = None
+    # ------------------------------------------------------------------
+
+    # Datos de Sistema
+    rol: Optional[RolUsuario] = RolUsuario.SOCIO
     esta_activo: bool = True
-    
-    # --- CAMPO NUEVO (MOVIDO AL FINAL) ---
     usuario_id: Optional[int] = None 
-    # -------------------------------------
     
-    # Un socio puede tener múltiples medidores (líneas de servicio)
-    medidores_ids: List[int] = field(default_factory=list)
+    # Datos demográficos extra (opcionales)
+    fecha_nacimiento: Optional[date] = None
+    discapacidad: bool = False
+    tercera_edad: bool = False
 
     def nombre_completo(self) -> str:
+        """Helper para mostrar nombre legible"""
         return f"{self.nombres} {self.apellidos}"
     
-    def anadir_medidor(self, medidor_id: int):
-        if medidor_id not in self.medidores_ids:
-            self.medidores_ids.append(medidor_id)
+    # NOTA: Eliminamos 'medidores_ids' y 'anadir_medidor'.
+    # Razón: En la nueva arquitectura, la relación es Socio <- Terreno <- Medidor.
+    # No necesitamos guardar una lista de IDs aquí manualmante.

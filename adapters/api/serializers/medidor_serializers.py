@@ -1,39 +1,52 @@
 # adapters/api/serializers/medidor_serializers.py
+
 from rest_framework import serializers
 
 class MedidorSerializer(serializers.Serializer):
     """
-    Serializer de SALIDA. Se usa para enviar datos al frontend.
-    Transforma la Entidad de Dominio 'Medidor' a JSON.
+    Serializer de SALIDA (Output).
+    Transforma la Entidad/DTO 'Medidor' a JSON para responder al cliente.
     """
     id = serializers.IntegerField(read_only=True)
-    codigo = serializers.CharField(max_length=50)
-    socio_id = serializers.IntegerField()
-    esta_activo = serializers.BooleanField()
-    observacion = serializers.CharField(allow_blank=True, required=False, allow_null=True)
-    tiene_medidor_fisico = serializers.BooleanField()
+    # Ahora vinculamos al Terreno, no al Socio
+    terreno_id = serializers.IntegerField(allow_null=True, help_text="ID del terreno donde está instalado")
+    
+    codigo = serializers.CharField()
+    marca = serializers.CharField(allow_null=True)
+    
+    # Lectura inicial es vital para cálculos (Float para compatibilidad JSON)
+    lectura_inicial = serializers.FloatField()
+    
+    # 'estado' reemplaza a 'esta_activo'. Ej: ACTIVO, DANADO, ROBADO.
+    estado = serializers.CharField()
+    
+    observacion = serializers.CharField(allow_null=True)
+    fecha_instalacion = serializers.CharField(allow_null=True, read_only=True)
 
-class CrearMedidorSerializer(serializers.Serializer):
+
+class RegistrarMedidorSerializer(serializers.Serializer):
     """
-    Serializer de ENTRADA para crear un medidor.
-    Validamos tipos de datos básicos. 
-    Nota: La validación de negocio (ej: si el socio existe o el código es único)
-    se delega al Caso de Uso (Core), no aquí.
+    Serializer de ENTRADA (Input) para crear un medidor.
+    Validamos formato antes de pasar al Caso de Uso.
     """
+    terreno_id = serializers.IntegerField(required=True, help_text="Terreno donde se instalará")
     codigo = serializers.CharField(max_length=50, required=True)
-    socio_id = serializers.IntegerField(required=True)
-    observacion = serializers.CharField(allow_blank=True, required=False, allow_null=True)
-    # Por defecto, asumimos que sí tiene medidor físico si no nos dicen lo contrario
-    tiene_medidor_fisico = serializers.BooleanField(default=True)
+    marca = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    lectura_inicial = serializers.FloatField(required=False, default=0.0)
+    observacion = serializers.CharField(required=False, allow_blank=True)
+
+    # Nota: No pedimos 'estado' ni 'fecha_instalacion', eso lo define el sistema al crear.
+
 
 class ActualizarMedidorSerializer(serializers.Serializer):
     """
-    Serializer de ENTRADA para actualizar.
-    Todos los campos son opcionales (required=False) para permitir 
-    actualizaciones parciales (PATCH).
+    Serializer de ENTRADA para correcciones (PATCH).
+    Solo permite editar datos descriptivos, NO estructurales.
     """
     codigo = serializers.CharField(max_length=50, required=False)
-    socio_id = serializers.IntegerField(required=False)
-    esta_activo = serializers.BooleanField(required=False)
-    observacion = serializers.CharField(allow_blank=True, required=False, allow_null=True)
-    tiene_medidor_fisico = serializers.BooleanField(required=False)
+    marca = serializers.CharField(max_length=50, required=False)
+    observacion = serializers.CharField(required=False, allow_blank=True)
+    
+    # IMPORTANTE:
+    # No permitimos actualizar 'terreno_id', 'estado' o 'lectura_inicial' aquí.
+    # Esos cambios requieren procesos de negocio (Reemplazo, Traslado, etc).

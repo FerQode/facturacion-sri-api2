@@ -1,41 +1,54 @@
-"""
-URL configuration for config project.
+# config/urls.py
 
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/5.2/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
+"""
+Configuración de URLs del Proyecto.
 """
 from django.contrib import admin
 from django.urls import path, include
 
-# --- AÑADIDO: Importamos nuestra vista personalizada ---
+# 1. Imports para Autenticación (JWT)
+from rest_framework_simplejwt.views import TokenRefreshView
+# Importamos tu vista personalizada de login
 from adapters.api.views.auth_views import CustomTokenObtainPairView
 
-# Importamos la vista de refresh (esa la usamos tal cual de la librería)
-from rest_framework_simplejwt.views import (
-    TokenRefreshView,
+# 2. Imports para Documentación (Swagger / Drf-yasg)
+from rest_framework import permissions
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+
+# --- Configuración de Metadatos de la API (Swagger) ---
+schema_view = get_schema_view(
+   openapi.Info(
+      title="API Facturación SRI y Agua Potable",
+      default_version='v1',
+      description="Documentación técnica de los endpoints del Sistema de Gestión de Agua y Facturación Electrónica.",
+      terms_of_service="https://www.google.com/policies/terms/",
+      contact=openapi.Contact(email="admin@juntaagua.com"),
+      license=openapi.License(name="BSD License"),
+   ),
+   public=True,
+   permission_classes=(permissions.AllowAny,), # Permite ver la doc sin estar logueado (ideal para desarrollo)
 )
 
 urlpatterns = [
+    # --- 1. Panel de Administración de Django ---
     path('admin/', admin.site.urls),
     
-    # --- MODIFICADO: Endpoint de Login ---
-    # Usamos CustomTokenObtainPairView en lugar de la vista por defecto (TokenObtainPairView).
-    # Cuando el frontend llame aquí, recibirá el token con 'rol' y 'socio_id' en el payload.
+    # --- 2. Autenticación y Seguridad (JWT) ---
+    # Login Personalizado: Devuelve Access Token + Refresh Token + Rol + SocioID
     path('api/v1/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    
-    # Endpoint de Refresh (estándar)
+    # Refresh Token: Para obtener un nuevo access token cuando el anterior expira
     path('api/v1/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     
-    # Rutas de la API (nuestros adaptadores)
+    # --- 3. Endpoints de Negocio (Tus Adaptadores) ---
+    # Aquí se conectan Barrios, Terrenos, Medidores, Socios, Facturas, etc.
     path('api/v1/', include('adapters.api.urls')),
+
+    # --- 4. Documentación Interactiva (Swagger/Redoc) ---
+    # UI estilo Swagger (La más común y recomendada)
+    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    # Archivo JSON crudo (útil para importar en Postman si quisieras)
+    path('swagger<format>/', schema_view.without_ui(cache_timeout=0), name='schema-json'),
+    # UI estilo Redoc (Alternativa más moderna visualmente)
+    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 ]

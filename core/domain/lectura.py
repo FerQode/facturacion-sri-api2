@@ -1,4 +1,5 @@
 # core/domain/lectura.py
+
 from dataclasses import dataclass
 from datetime import date
 from typing import Optional
@@ -6,22 +7,36 @@ from typing import Optional
 @dataclass
 class Lectura:
     """
-    Entidad que representa el registro de consumo de un medidor.
+    Entidad que representa el registro de consumo (toma de datos) de un medidor.
+    Actualizado para Fase 4 (Soporte de decimales y cambio de medidor).
     """
     id: Optional[int]
     medidor_id: int
-    fecha_lectura: date
-    lectura_actual_m3: int # Valor actual en metros cúbicos
-    lectura_anterior_m3: int # Valor con el que se facturó el mes pasado
     
+    # Usamos 'valor' para estandarizar con el Repositorio y el Modelo
+    valor: float 
+    
+    fecha: date
+    
+    # Campos opcionales (Defaults van al final)
+    observacion: Optional[str] = None
+    esta_facturada: bool = False
+    
+    # Campo auxiliar para cálculos (no siempre se guarda en BD en la misma fila)
+    lectura_anterior: Optional[float] = None 
+
     @property
-    def consumo_del_mes_m3(self) -> int:
+    def consumo_calculado(self) -> float:
         """
-        Calcula el consumo del período.
+        Calcula el consumo del período si existe una lectura anterior.
         """
-        if self.lectura_actual_m3 < self.lectura_anterior_m3:
-            # Manejo de reinicio del medidor (caso anómalo)
-            # Aquí iría lógica más compleja, pero por ahora lanzamos error
-            raise ValueError("Lectura actual no puede ser menor a la anterior.")
+        if self.lectura_anterior is None:
+            return 0.0
+            
+        if self.valor < self.lectura_anterior:
+            # Aquí podríamos manejar la lógica de "vuelta al contador" (reset)
+            # Por ahora, mantenemos la validación estricta
+            raise ValueError(f"Inconsistencia: Lectura actual ({self.valor}) menor a anterior ({self.lectura_anterior}).")
         
-        return self.lectura_actual_m3 - self.lectura_anterior_m3
+        # Redondeamos a 2 decimales para evitar problemas de coma flotante
+        return round(self.valor - self.lectura_anterior, 2)

@@ -1,27 +1,38 @@
 # core/use_cases/medidor_uc.py
-from typing import List
+
+from typing import List, Optional
 from core.domain.medidor import Medidor
-from core.interfaces.repositories import IMedidorRepository, ISocioRepository
-from core.use_cases.medidor_dtos import MedidorDTO, CrearMedidorDTO, ActualizarMedidorDTO
-from core.shared.exceptions import MedidorNoEncontradoError, SocioNoEncontradoError, ValidacionError
+from core.interfaces.repositories import IMedidorRepository, ITerrenoRepository
+# CORRECCIÓN: Usamos los DTOs actualizados
+from core.use_cases.medidor_dtos import (
+    MedidorDTO, 
+    RegistrarMedidorDTO, 
+    ActualizarMedidorDTO
+)
+from core.shared.exceptions import (
+    MedidorNoEncontradoError, 
+    EntityNotFoundException, 
+    BusinessRuleException, 
+    MedidorDuplicadoError
+)
 
 def _map_medidor_to_dto(medidor: Medidor) -> MedidorDTO:
     """
-    Función auxiliar para convertir una Entidad de Dominio a un DTO.
+    Función auxiliar para convertir Entidad de Dominio -> DTO de Salida.
     """
     return MedidorDTO(
         id=medidor.id,
+        terreno_id=medidor.terreno_id, # Ahora vinculado a Terreno
         codigo=medidor.codigo,
-        socio_id=medidor.socio_id,
-        esta_activo=medidor.esta_activo,
+        marca=medidor.marca,
+        lectura_inicial=medidor.lectura_inicial,
+        estado=medidor.estado, # 'ACTIVO', 'INACTIVO', etc.
         observacion=medidor.observacion,
-        tiene_medidor_fisico=medidor.tiene_medidor_fisico
+        fecha_instalacion=str(medidor.fecha_instalacion) if medidor.fecha_instalacion else None
     )
 
 class ListarMedidoresUseCase:
-    """
-    Caso de Uso para obtener la lista de todos los medidores.
-    """
+    """Obtiene todos los medidores."""
     def __init__(self, medidor_repo: IMedidorRepository):
         self.medidor_repo = medidor_repo
 
@@ -30,9 +41,7 @@ class ListarMedidoresUseCase:
         return [_map_medidor_to_dto(m) for m in medidores]
 
 class ObtenerMedidorUseCase:
-    """
-    Caso de Uso para obtener un medidor específico por su ID.
-    """
+    """Obtiene un medidor por ID."""
     def __init__(self, medidor_repo: IMedidorRepository):
         self.medidor_repo = medidor_repo
 
@@ -44,30 +53,35 @@ class ObtenerMedidorUseCase:
 
 class CrearMedidorUseCase:
     """
-    Caso de Uso para crear un nuevo medidor.
-    Valida que el socio exista y que el código sea único.
+    Crea un medidor nuevo vinculado a un Terreno.
     """
-    def __init__(self, medidor_repo: IMedidorRepository, socio_repo: ISocioRepository):
+    def __init__(self, medidor_repo: IMedidorRepository, terreno_repo: ITerrenoRepository):
         self.medidor_repo = medidor_repo
-        self.socio_repo = socio_repo
+        self.terreno_repo = terreno_repo
 
-    def execute(self, input_dto: CrearMedidorDTO) -> MedidorDTO:
-        # 1. Validar que el socio existe
-        if not self.socio_repo.get_by_id(input_dto.socio_id):
-            raise SocioNoEncontradoError(f"Socio {input_dto.socio_id} no encontrado.")
+    def execute(self, dto: RegistrarMedidorDTO) -> MedidorDTO:
+        # 1. Validar Terreno
+        if not self.terreno_repo.get_by_id(dto.terreno_id):
+            raise EntityNotFoundException(f"El terreno {dto.terreno_id} no existe.")
+
+        # 2. Validar Unicidad de Código
+        if self.medidor_repo.get_by_codigo(dto.codigo):
+            raise MedidorDuplicadoError(f"El código '{dto.codigo}' ya existe.")
         
-        # 2. Validar código único
-        if self.medidor_repo.get_by_codigo(input_dto.codigo):
-            raise ValidacionError(f"El código '{input_dto.codigo}' ya existe.")
+        # 3. Validar que el terreno no tenga ya un medidor activo
+        # (Opcional, depende de tu regla de negocio, pero recomendado)
+        if self.medidor_repo.get_by_terreno_id(dto.terreno_id):
+             raise BusinessRuleException("Este terreno ya tiene un medidor instalado.")
 
-        # 3. Crear la entidad
+        # 4. Crear Entidad
         medidor = Medidor(
             id=None,
-            codigo=input_dto.codigo,
-            socio_id=input_dto.socio_id,
-            esta_activo=True,
-            observacion=input_dto.observacion,
-            tiene_medidor_fisico=input_dto.tiene_medidor_fisico
+            terreno_id=dto.terreno_id,
+            codigo=dto.codigo,
+            marca=dto.marca,
+            lectura_inicial=dto.lectura_inicial,
+            estado='ACTIVO',
+            observacion=dto.observacion
         )
         
         guardado = self.medidor_repo.save(medidor)
@@ -75,50 +89,37 @@ class CrearMedidorUseCase:
 
 class ActualizarMedidorUseCase:
     """
-    Caso de Uso para actualizar un medidor existente.
-    Permite actualizaciones parciales (PATCH).
+    Actualiza datos básicos (corrección de errores).
     """
-    def __init__(self, medidor_repo: IMedidorRepository, socio_repo: ISocioRepository):
+    def __init__(self, medidor_repo: IMedidorRepository):
         self.medidor_repo = medidor_repo
-        self.socio_repo = socio_repo
 
-    def execute(self, medidor_id: int, input_dto: ActualizarMedidorDTO) -> MedidorDTO:
-        # 1. Buscar el medidor existente
+    def execute(self, medidor_id: int, dto: ActualizarMedidorDTO) -> MedidorDTO:
         medidor = self.medidor_repo.get_by_id(medidor_id)
         if not medidor:
             raise MedidorNoEncontradoError(f"Medidor {medidor_id} no encontrado.")
 
-        # 2. Actualizar campos si vienen en el DTO
-        if input_dto.socio_id is not None:
-            # Si cambiamos el dueño, verificamos que el nuevo exista
-            if not self.socio_repo.get_by_id(input_dto.socio_id):
-                raise SocioNoEncontradoError(f"Socio {input_dto.socio_id} no encontrado.")
-            medidor.socio_id = input_dto.socio_id
-
-        if input_dto.codigo is not None:
-            # Si cambiamos el código, verificamos que no esté duplicado
-            existente = self.medidor_repo.get_by_codigo(input_dto.codigo)
-            # El código puede existir si es ESTE MISMO medidor
+        # Solo permitimos corregir campos visuales, NO estructurales
+        if dto.codigo:
+            # Validar unicidad si cambia el código
+            existente = self.medidor_repo.get_by_codigo(dto.codigo)
             if existente and existente.id != medidor_id:
-                raise ValidacionError(f"El código '{input_dto.codigo}' ya está en uso.")
-            medidor.codigo = input_dto.codigo
+                raise MedidorDuplicadoError(f"El código '{dto.codigo}' ya está en uso.")
+            medidor.codigo = dto.codigo
 
-        if input_dto.esta_activo is not None: 
-            medidor.esta_activo = input_dto.esta_activo
+        if dto.marca:
+            medidor.marca = dto.marca
         
-        if input_dto.observacion is not None: 
-            medidor.observacion = input_dto.observacion
-            
-        if input_dto.tiene_medidor_fisico is not None: 
-            medidor.tiene_medidor_fisico = input_dto.tiene_medidor_fisico
+        if dto.observacion:
+            medidor.observacion = dto.observacion
 
-        # 3. Guardar cambios
         guardado = self.medidor_repo.save(medidor)
         return _map_medidor_to_dto(guardado)
 
 class EliminarMedidorUseCase:
     """
-    Caso de Uso para eliminar (lógicamente) un medidor.
+    Desactiva un medidor (Soft Delete).
+    Nota: Para cambios reales, usar ReemplazarMedidorUseCase.
     """
     def __init__(self, medidor_repo: IMedidorRepository):
         self.medidor_repo = medidor_repo
@@ -128,6 +129,8 @@ class EliminarMedidorUseCase:
         if not medidor:
             raise MedidorNoEncontradoError(f"Medidor {medidor_id} no encontrado.")
         
-        # Soft Delete (Desactivación lógica)
-        medidor.esta_activo = False
+        medidor.estado = 'INACTIVO'
+        # Desvincular del terreno para liberar el cupo (Opcional, según negocio)
+        # medidor.terreno_id = None 
+        
         self.medidor_repo.save(medidor)

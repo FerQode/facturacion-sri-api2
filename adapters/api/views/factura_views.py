@@ -1,227 +1,137 @@
-import logging
+# adapters/api/views/factura_views.py
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-# --- MEJORA DE BUENA PRÁCTICA (Seguridad) ---
-# Importamos los permisos de DRF.
-# IsAuthenticated: Solo permite usuarios con un Token JWT válido.
-# IsAdminUser: Solo permite usuarios con `is_staff=True` (Admin, Tesorero).
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
-# --- 1. Serializers ("Porteros") ---
-from adapters.api.serializers.factura_serializers import (
-    GenerarFacturaSerializer,
-    EnviarFacturaSRISerializer,
-    ConsultarAutorizacionSerializer # <-- Import nuevo
-)
+# NOTA: Aquí importaremos tus Casos de Uso de Facturación cuando los creemos en el Core.
+# from core.use_cases.facturacion.generar_factura_uc import GenerarFacturaUseCase
+# from adapters.infrastructure.repositories.django_factura_repository import DjangoFacturaRepository
 
-# --- 2. Casos de Uso ("Cerebros") y DTOs ---
-# (Usamos las nuevas rutas del refactor)
-from core.use_cases.factura_uc import (
-    GenerarFacturaDesdeLecturaUseCase,
-    EnviarFacturaSRIUseCase,        # <-- Import que ya tenías
-    ConsultarAutorizacionUseCase # <-- Import nuevo
-)
-from core.use_cases.factura_dtos import (
-    GenerarFacturaDesdeLecturaDTO,
-    EnviarFacturaSRIDTO,            # <-- Import que ya tenías
-    ConsultarAutorizacionDTO # <-- Import nuevo
-)
-
-# --- 3. Repositorios y Servicios ("Traductores") ---
-from adapters.infrastructure.repositories.django_factura_repository import DjangoFacturaRepository
-from adapters.infrastructure.repositories.django_lectura_repository import DjangoLecturaRepository
-from adapters.infrastructure.repositories.django_medidor_repository import DjangoMedidorRepository
-from adapters.infrastructure.repositories.django_socio_repository import DjangoSocioRepository
-from adapters.infrastructure.services.django_sri_service import DjangoSRIService 
-
-# --- 4. Excepciones de Negocio ---
-from core.shared.exceptions import (
-    LecturaNoEncontradaError, 
-    MedidorNoEncontradoError, 
-    SocioNoEncontradoError,
-    FacturaNoEncontradaError, # <-- Import nuevo
-    FacturaEstadoError        # <-- Import que ya tenías
-)
-
-# Configura un logger
-logger = logging.getLogger(__name__)
-
-# --- Vista 1: Generar Factura ---
+# =============================================================================
+# 1. GENERAR FACTURA (Cálculo + XML + Firma)
+# =============================================================================
 class GenerarFacturaAPIView(APIView):
     """
-    Endpoint (Ventanilla) de API para generar una nueva factura
-    a partir de una lectura de consumo ya registrada.
+    Vista para generar la factura electrónica.
+    Toma las lecturas, calcula consumo, genera XML y lo firma.
     """
-    # --- MEJORA DE BUENA PRÁCTICA (Seguridad) ---
-    # Solo usuarios autenticados (Admin, Tesorero, Operador) pueden generar facturas.
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAdminUser] # Restringir a Tesoreros/Admins
 
-    def post(self, request, *args, **kwargs):
-        serializer = GenerarFacturaSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    @swagger_auto_schema(
+        operation_description="Genera, firma y guarda una factura basada en una lectura.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'lectura_id': openapi.Schema(type=openapi.TYPE_INTEGER, description="ID de la lectura a facturar"),
+            },
+            required=['lectura_id']
+        ),
+        responses={200: "Factura Generada", 400: "Error de validación"}
+    )
+    def post(self, request):
+        # TODO: Implementar lógica con GenerarFacturaUseCase
+        lectura_id = request.data.get('lectura_id')
         
-        try:
-            dto = GenerarFacturaDesdeLecturaDTO(**serializer.validated_data)
-        except Exception as e:
-            logger.error(f"Discrepancia entre Serializer y DTO: {e}", exc_info=True)
-            return Response({"error": "Error interno de configuración."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({
+            "mensaje": f"Proceso iniciado: Generando factura para lectura {lectura_id}",
+            "estado": "PENDIENTE_IMPLEMENTACION",
+            "nota": "Aquí se invocará al Core para crear el XML firmado."
+        }, status=status.HTTP_200_OK)
 
-        try:
-            factura_repo = DjangoFacturaRepository()
-            lectura_repo = DjangoLecturaRepository()
-            medidor_repo = DjangoMedidorRepository()
-            socio_repo = DjangoSocioRepository()
-        except Exception as e:
-            logger.error(f"Error al instanciar repositorios: {e}", exc_info=True)
-            return Response({"error": "Error interno al conectar con servicios."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-        use_case = GenerarFacturaDesdeLecturaUseCase(
-            factura_repo=factura_repo, 
-            lectura_repo=lectura_repo,
-            medidor_repo=medidor_repo,
-            socio_repo=socio_repo
-        )
 
-        try:
-            factura_creada = use_case.execute(dto)
-        
-        except (LecturaNoEncontradaError, MedidorNoEncontradoError, SocioNoEncontradoError) as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            logger.error(f"Error inesperado en GenerarFacturaUseCase: {e}", exc_info=True)
-            return Response({"error": f"Error interno del servidor: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        try:
-            respuesta_data = {
-                "id": factura_creada.id,
-                "socio_id": factura_creada.socio_id,
-                "estado": factura_creada.estado.value,
-                "total": f"{factura_creada.total:.2f}",
-                "detalles": [d.concepto for d in factura_creada.detalles]
-            }
-            return Response(respuesta_data, status=status.HTTP_201_CREATED)
-        except Exception as e:
-            logger.error(f"Error al serializar la respuesta: {e}", exc_info=True)
-            return Response({"error": "Factura creada pero hubo un error al formatear la respuesta."}, status=status.HTTP_201_CREATED)
-
-# --- Vista 2: Enviar Factura al SRI ---
+# =============================================================================
+# 2. ENVIAR AL SRI (Consumo de Web Service)
+# =============================================================================
 class EnviarFacturaSRIAPIView(APIView):
     """
-    Endpoint (Ventanilla) de API para enviar una factura existente
-    al Servicio de Rentas Internas (SRI) para su autorización.
+    Vista para enviar una factura YA firmada al SRI (Ambiente Pruebas/Producción).
     """
-    # --- MEJORA DE BUENA PRÁCTICA (Seguridad) ---
-    # Solo usuarios autenticados (Admin, Tesorero) pueden enviar al SRI.
-    # Usamos IsAdminUser, que verifica que request.user.is_staff == True.
-    permission_classes = [IsAdminUser]
-    
-    def post(self, request, *args, **kwargs):
+    @swagger_auto_schema(
+        operation_description="Envía el XML firmado al Web Service del SRI.",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'factura_id': openapi.Schema(type=openapi.TYPE_INTEGER),
+            },
+            required=['factura_id']
+        ),
+        responses={200: "Recibido por SRI", 500: "Rechazado por SRI"}
+    )
+    def post(self, request):
+        factura_id = request.data.get('factura_id')
         
-        serializer = EnviarFacturaSRISerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            dto = EnviarFacturaSRIDTO(**serializer.validated_data)
-        except Exception as e:
-             logger.error(f"Discrepancia entre Serializer y DTO (EnviarSRI): {e}", exc_info=True)
-             return Response({"error": "Error interno de configuración."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({
+            "mensaje": "Conectando con SRI...",
+            "factura_id": factura_id,
+            "estado_sri": "RECIBIDA (Simulado)"
+        }, status=status.HTTP_200_OK)
 
-        try:
-            factura_repo = DjangoFacturaRepository()
-            socio_repo = DjangoSocioRepository()
-            sri_service = DjangoSRIService()
-        except Exception as e:
-            logger.error(f"Error al instanciar servicios/repos: {e}", exc_info=True)
-            return Response({"error": "Error interno al conectar con servicios."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-        use_case = EnviarFacturaSRIUseCase(
-            factura_repo=factura_repo, 
-            socio_repo=socio_repo,
-            sri_service=sri_service
-        )
 
-        try:
-            sri_response = use_case.execute(dto)
-        
-        except FacturaNoEncontradaError as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except FacturaEstadoError as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            logger.error(f"Error inesperado en EnviarFacturaSRIUseCase: {e}", exc_info=True)
-            return Response({"error": f"Error interno del servidor: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        respuesta_data = {
-            "exito_sri": sri_response.exito,
-            "estado_sri": sri_response.estado,
-            "clave_acceso": sri_response.autorizacion_id,
-            "mensaje": sri_response.mensaje_error
-        }
-        
-        return Response(respuesta_data, status=status.HTTP_200_OK)
-
-# --- PASO 5: Vista NUEVA A AÑADIR ---
+# =============================================================================
+# 3. CONSULTAR AUTORIZACIÓN (Estado SRI)
+# =============================================================================
 class ConsultarAutorizacionAPIView(APIView):
     """
-    Endpoint (Ventanilla) para consultar el estado de autorización
-    de una factura ya enviada al SRI.
+    Vista para preguntar al SRI si la factura fue AUTORIZADA.
     """
-    # --- MEJORA DE BUENA PRÁCTICA (Seguridad) ---
-    # Permitimos que cualquier usuario autenticado (incluido un "Socio")
-    # pueda consultar el estado de una factura.
-    permission_classes = [IsAuthenticated]
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter('clave_acceso', openapi.IN_QUERY, description="Clave de acceso de 49 dígitos", type=openapi.TYPE_STRING)
+        ]
+    )
+    def get(self, request):
+        clave = request.query_params.get('clave_acceso')
+        
+        return Response({
+            "clave_acceso": clave,
+            "estado": "AUTORIZADO",
+            "mensaje": "El SRI ha validado el comprobante (Simulado)"
+        }, status=status.HTTP_200_OK)
 
-    def post(self, request, *args, **kwargs):
-        """
-        Maneja la petición POST a /api/v1/facturas/consultar/
-        """
-        
-        # 1. Validar la entrada con el "Portero"
-        serializer = ConsultarAutorizacionSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            
-        # 2. Convertir a DTO
-        try:
-            dto = ConsultarAutorizacionDTO(**serializer.validated_data)
-        except Exception as e:
-            logger.error(f"Discrepancia entre Serializer y DTO: {e}", exc_info=True)
-            return Response({"error": "Error interno de configuración."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
-        # 3. Ensamblar "Herramientas"
-        try:
-            factura_repo = DjangoFacturaRepository()
-            sri_service = DjangoSRIService()
-        except Exception as e:
-            logger.error(f"Error al instanciar servicios: {e}", exc_info=True)
-            return Response({"error": "Error interno al conectar con servicios."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # 4. Instanciar "Cerebro"
-        use_case = ConsultarAutorizacionUseCase(
-            factura_repo=factura_repo, 
-            sri_service=sri_service
-        )
+# =============================================================================
+# 4. MIS FACTURAS (Portal del Socio)
+# =============================================================================
+class MisFacturasAPIView(APIView):
+    """
+    Vista para que un Socio autenticado vea SU historial de consumo y cobros.
+    """
+    permission_classes = [IsAuthenticated] # Solo usuarios logueados
+
+    @swagger_auto_schema(
+        operation_description="Obtiene las facturas del socio logueado actualmente.",
+        responses={200: "Lista de facturas"}
+    )
+    def get(self, request):
+        # 1. Obtener el usuario logueado (viene del Token JWT)
+        usuario = request.user
         
-        # 5. Ejecutar lógica
         try:
-            sri_response = use_case.execute(dto)
-        
-        # 6. Manejar errores de negocio
-        except FacturaNoEncontradaError as e:
-             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            logger.error(f"Error inesperado en ConsultarAutorizacionUseCase: {e}", exc_info=True)
-            return Response({"error": f"Error interno del servidor: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-        # 7. Devolver respuesta exitosa (del SRI)
-        respuesta_data = {
-            "exito_sri": sri_response.exito,
-            "estado_sri": sri_response.estado,
-            "clave_acceso": sri_response.autorizacion_id,
-            "mensaje": sri_response.mensaje_error
-        }
-        
-        return Response(respuesta_data, status=status.HTTP_200_OK)
+            # 2. Intentar obtener el perfil de socio asociado
+            # Recordar: En SocioModel definimos related_name='perfil_socio'
+            socio = usuario.perfil_socio 
+            
+            # TODO: Conectar con FacturaRepository
+            # facturas = DjangoFacturaRepository().get_by_socio_id(socio.id)
+            # data = FacturaSerializer(facturas, many=True).data
+            
+            # Mock de respuesta por ahora
+            return Response({
+                "usuario": usuario.username,
+                "socio_id": socio.id,
+                "nombre_socio": f"{socio.nombres} {socio.apellidos}",
+                "facturas": [
+                    {"mes": "Enero", "consumo": "20m3", "total": 5.50, "estado": "PAGADO"},
+                    {"mes": "Febrero", "consumo": "22m3", "total": 6.05, "estado": "PENDIENTE"}
+                ]
+            }, status=status.HTTP_200_OK)
+
+        except AttributeError:
+            # Si el usuario es admin/staff pero no tiene un perfil de Socio creado
+            return Response({
+                "error": "El usuario actual no tiene un perfil de Socio asociado."
+            }, status=status.HTTP_404_NOT_FOUND)
