@@ -39,3 +39,16 @@ class DjangoAuthRepository(IAuthRepository):
             user.save()
         except User.DoesNotExist:
             pass # Si no existe, no hacemos nada (idempotencia)
+
+    def activar_usuario(self, user_id: int) -> None:
+        """
+        Reactiva un usuario previamente desactivado.
+        Esto permite que el socio vuelva a loguearse con su contraseña antigua.
+        NO modificamos la contraseña aquí, preservando el hash original.
+        """
+        try:
+            user = User.objects.get(pk=user_id)
+            user.is_active = True
+            user.save()
+        except User.DoesNotExist:
+            pass # Si no existe, no hacemos nada

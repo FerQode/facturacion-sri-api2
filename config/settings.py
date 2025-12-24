@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'rest_framework',     # Para construir la API REST
     'corsheaders',        # Para permitir peticiones del Frontend
     'rest_framework_simplejwt', # --- AÑADIDO --- App de Tokens JWT
+    'drf_yasg',
     
     # --- Apps de nuestra Arquitectura Limpia ---
     'adapters.api.apps.ApiConfig',
