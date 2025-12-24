@@ -8,6 +8,9 @@ from drf_yasg.utils import swagger_auto_schema # Documentación automática
 # 1. Imports de Infraestructura (Repositorios)
 from adapters.infrastructure.repositories.django_medidor_repository import DjangoMedidorRepository
 from adapters.infrastructure.repositories.django_terreno_repository import DjangoTerrenoRepository
+# --- NUEVOS IMPORTS (Requeridos por Frontend) ---
+from adapters.infrastructure.repositories.django_socio_repository import DjangoSocioRepository
+from adapters.infrastructure.repositories.django_barrio_repository import DjangoBarrioRepository
 
 # 2. Imports de Serializers (Validación Entrada / Formato Salida)
 from adapters.api.serializers.medidor_serializers import (
@@ -42,24 +45,65 @@ from core.shared.exceptions import (
 class MedidorViewSet(viewsets.ViewSet):
     """
     ViewSet para la gestión directa de Medidores.
-    Permite el CRUD administrativo (Listar, Ver, Crear, Editar, Eliminar).
+    Permite el CRUD administrativo y visualización enriquecida para el inventario.
     """
     # permission_classes = [IsAdminUser] # Descomentar para seguridad en producción
 
     # =================================================================
-    # 1. LISTAR (GET)
+    # 1. LISTAR (GET) - ACTUALIZADO PARA FRONTEND ✅
     # =================================================================
     @swagger_auto_schema(responses={200: MedidorSerializer(many=True)})
     def list(self, request):
-        repo = DjangoMedidorRepository()
-        use_case = ListarMedidoresUseCase(repo)
+        # 1. Instanciamos repositorio principal
+        repo_medidor = DjangoMedidorRepository()
         
-        # Ejecutamos lógica
-        dtos = use_case.execute()
+        # 2. Instanciamos repositorios auxiliares para cruzar datos
+        repo_terreno = DjangoTerrenoRepository()
+        repo_socio = DjangoSocioRepository()
+        repo_barrio = DjangoBarrioRepository()
+
+        use_case = ListarMedidoresUseCase(repo_medidor)
         
-        # Serializamos la respuesta (Lista de objetos)
-        serializer = MedidorSerializer(dtos, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        # 3. Ejecutamos lógica (Obtenemos lista base de medidores)
+        medidores = use_case.execute()
+        
+        # 4. Construimos la respuesta enriquecida (Data Mashup)
+        data = []
+        for m in medidores:
+            # Objeto base con datos del medidor
+            info = {
+                "id": m.id,
+                "codigo": m.codigo,
+                "marca": m.marca,
+                "estado": m.estado,
+                "lectura_inicial": m.lectura_inicial,
+                "terreno_id": m.terreno_id,
+                "observacion": getattr(m, 'observacion', None),
+                
+                # Campos calculados para la UI
+                "nombre_barrio": "Sin Asignar",
+                "nombre_socio": "En bodega / Sin uso"
+            }
+            
+            # Si el medidor está instalado (tiene terreno_id), buscamos detalles
+            if m.terreno_id:
+                terreno = repo_terreno.get_by_id(m.terreno_id)
+                if terreno:
+                    # A. Buscar nombre del Barrio
+                    if terreno.barrio_id:
+                        barrio = repo_barrio.get_by_id(terreno.barrio_id)
+                        if barrio:
+                            info["nombre_barrio"] = barrio.nombre
+                    
+                    # B. Buscar nombre del Socio
+                    if terreno.socio_id:
+                        socio = repo_socio.get_by_id(terreno.socio_id)
+                        if socio:
+                            info["nombre_socio"] = f"{socio.nombres} {socio.apellidos}"
+
+            data.append(info)
+
+        return Response(data, status=status.HTTP_200_OK)
 
     # =================================================================
     # 2. DETALLE (GET ID)

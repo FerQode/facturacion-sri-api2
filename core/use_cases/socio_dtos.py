@@ -3,7 +3,9 @@ from dataclasses import dataclass
 from typing import Optional
 from core.shared.enums import RolUsuario
 
-# DTO para la respuesta (lo que enviamos al exterior)
+# =============================================================================
+# 1. DTO DE SALIDA (Respuesta al Frontend)
+# =============================================================================
 @dataclass(frozen=True)
 class SocioDTO:
     id: int
@@ -12,30 +14,51 @@ class SocioDTO:
     apellidos: str
     email: Optional[str]
     telefono: Optional[str]
-    barrio: str
-    rol: str # Enviamos el valor simple (string)
+    
+    # --- ACTUALIZADO FASE 3/4 ---
+    # Antes: barrio: str
+    barrio_id: Optional[int]    # Devolvemos el ID para que el frontend preseleccione el dropdown
+    direccion: Optional[str]    # La dirección específica (calle, lote, etc.)
+    # ----------------------------
+    
+    rol: str 
     esta_activo: bool
 
-# DTO de entrada para crear un socio
+# =============================================================================
+# 2. DTO DE ENTRADA (Creación)
+# =============================================================================
 @dataclass(frozen=True)
 class CrearSocioDTO:
     cedula: str
     nombres: str
     apellidos: str
-    barrio: str
-    rol: RolUsuario # Usamos el Enum para la lógica interna
+    
+    # --- ACTUALIZADO ---
+    barrio_id: int      # El Frontend debe enviar el ID del barrio seleccionado
+    direccion: str      # Obligatorio para una junta de agua
+    # -------------------
+    
+    rol: RolUsuario 
     email: Optional[str] = None
     telefono: Optional[str] = None
-    # --- NUEVOS CAMPOS ---
-    username: Optional[str] = None # Opcional, si no viene usamos la cédula
-    password: Optional[str] = None # Opcional, si no viene generamos una
+    
+    # Credenciales opcionales
+    username: Optional[str] = None 
+    password: Optional[str] = None 
 
-# DTO de entrada para actualizar (todos los campos opcionales)
+# =============================================================================
+# 3. DTO DE ENTRADA (Actualización)
+# =============================================================================
 @dataclass(frozen=True)
 class ActualizarSocioDTO:
     nombres: Optional[str] = None
     apellidos: Optional[str] = None
-    barrio: Optional[str] = None
+    
+    # --- ACTUALIZADO ---
+    barrio_id: Optional[int] = None
+    direccion: Optional[str] = None
+    # -------------------
+    
     rol: Optional[RolUsuario] = None
     email: Optional[str] = None
     telefono: Optional[str] = None

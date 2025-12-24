@@ -21,12 +21,13 @@ class BarrioAdmin(admin.ModelAdmin):
 
 @admin.register(SocioModel)
 class SocioAdmin(admin.ModelAdmin):
-    # ACTUALIZADO: Referencias correctas a la Fase 1 y 2
-    list_display = ('cedula', 'apellidos', 'nombres', 'barrio_domicilio', 'rol', 'esta_activo')
-    list_filter = ('rol', 'esta_activo', 'barrio_domicilio')
-    search_fields = ('cedula', 'nombres', 'apellidos')
+    # --- CORRECCIÓN: Usamos 'barrio' en lugar de 'barrio_domicilio' ---
+    list_display = ('cedula', 'apellidos', 'nombres', 'barrio', 'rol', 'esta_activo')
     
-    # Esto es necesario para que funcione el 'autocomplete_fields' en TerrenoAdmin
+    # Filtros laterales
+    list_filter = ('rol', 'esta_activo', 'barrio')
+    
+    search_fields = ('cedula', 'nombres', 'apellidos')
     ordering = ['apellidos'] 
 
     fieldsets = (
@@ -34,7 +35,8 @@ class SocioAdmin(admin.ModelAdmin):
             'fields': ('cedula', 'nombres', 'apellidos')
         }),
         ('Contacto', {
-            'fields': ('email', 'telefono', 'barrio_domicilio', 'direccion')
+            # Aquí también cambiamos a 'barrio'
+            'fields': ('email', 'telefono', 'barrio', 'direccion')
         }),
         ('Sistema', {
             'fields': ('rol', 'esta_activo', 'usuario')
@@ -43,12 +45,10 @@ class SocioAdmin(admin.ModelAdmin):
 
 @admin.register(TerrenoModel)
 class TerrenoAdmin(admin.ModelAdmin):
-    # ACTUALIZADO: Fase 3 (Gestión de Terrenos)
     list_display = ('id', 'get_socio_nombre', 'barrio', 'direccion', 'es_cometida_activa')
     list_filter = ('es_cometida_activa', 'barrio')
     search_fields = ('direccion', 'socio__cedula', 'socio__apellidos')
     
-    # Autocompletado: Requiere que SocioAdmin y BarrioAdmin tengan 'search_fields'
     autocomplete_fields = ['socio', 'barrio']
 
     def get_socio_nombre(self, obj):
@@ -57,12 +57,10 @@ class TerrenoAdmin(admin.ModelAdmin):
 
 @admin.register(MedidorModel)
 class MedidorAdmin(admin.ModelAdmin):
-    # ACTUALIZADO: Fase 4 (Campos nuevos: marca, estado, terreno)
     list_display = ('codigo', 'estado', 'marca', 'lectura_inicial', 'get_ubicacion')
     list_filter = ('estado', 'marca')
     search_fields = ('codigo', 'terreno__socio__cedula')
     
-    # Campo calculado para ver dónde está instalado
     def get_ubicacion(self, obj):
         if obj.terreno:
             return f"{obj.terreno.barrio.nombre} - {obj.terreno.direccion}"
@@ -71,11 +69,7 @@ class MedidorAdmin(admin.ModelAdmin):
 
 @admin.register(LecturaModel)
 class LecturaAdmin(admin.ModelAdmin):
-    # ACTUALIZADO: Corrección crítica de nombres de campos (Fase 4.5)
-    # Antes: lectura_actual_m3 -> Ahora: valor
-    # Antes: fecha_lectura -> Ahora: fecha
     list_display = ('id', 'get_medidor_codigo', 'fecha', 'valor', 'esta_facturada')
-    
     list_filter = ('fecha', 'esta_facturada')
     search_fields = ('medidor__codigo',)
     ordering = ('-fecha',)

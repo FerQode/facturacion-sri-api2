@@ -2,10 +2,11 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser 
+from drf_yasg.utils import swagger_auto_schema # <--- IMPORTANTE PARA DOCUMENTACIÓN
 
 # Importamos los "traductores" de BBDD
 from adapters.infrastructure.repositories.django_socio_repository import DjangoSocioRepository
-from adapters.infrastructure.repositories.django_auth_repository import DjangoAuthRepository # <-- Necesario
+from adapters.infrastructure.repositories.django_auth_repository import DjangoAuthRepository
 
 # Importamos los "porteros" (Serializers)
 from adapters.api.serializers.socio_serializers import (
@@ -26,6 +27,7 @@ class SocioViewSet(viewsets.ViewSet):
     """
     permission_classes = [IsAdminUser]
 
+    @swagger_auto_schema(responses={200: SocioSerializer(many=True)})
     def list(self, request):
         """ GET /api/v1/socios/ """
         repo = DjangoSocioRepository()
@@ -34,6 +36,7 @@ class SocioViewSet(viewsets.ViewSet):
         serializer = SocioSerializer(socios_dto, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @swagger_auto_schema(responses={200: SocioSerializer()})
     def retrieve(self, request, pk=None):
         """ GET /api/v1/socios/<pk>/ """
         repo = DjangoSocioRepository()
@@ -45,18 +48,20 @@ class SocioViewSet(viewsets.ViewSet):
         except SocioNoEncontradoError as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
 
+    @swagger_auto_schema(request_body=CrearSocioSerializer, responses={201: SocioSerializer()})
     def create(self, request):
         """ POST /api/v1/socios/ """
         serializer = CrearSocioSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        # MAGIA PYTHONICA: Como los campos del Serializer se llaman IGUAL
+        # que los del DTO (barrio_id, direccion), podemos desempaquetar con **
         crear_dto = CrearSocioDTO(**serializer.validated_data)
         
         socio_repo = DjangoSocioRepository()
         auth_repo = DjangoAuthRepository()
         
-        # Inyectamos ambos repositorios
         use_case = CrearSocioUseCase(socio_repo, auth_repo)
         
         try:
@@ -67,9 +72,10 @@ class SocioViewSet(viewsets.ViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         
     def update(self, request, pk=None):
-        """ PUT /api/v1/socios/<pk>/ """
+        """ PUT /api/v1/socios/<pk>/ (Redirige a PATCH) """
         return self.partial_update(request, pk)
 
+    @swagger_auto_schema(request_body=ActualizarSocioSerializer, responses={200: SocioSerializer()})
     def partial_update(self, request, pk=None):
         """ PATCH /api/v1/socios/<pk>/ """
         serializer = ActualizarSocioSerializer(data=request.data, partial=True)
@@ -78,13 +84,10 @@ class SocioViewSet(viewsets.ViewSet):
         
         actualizar_dto = ActualizarSocioDTO(**serializer.validated_data)
 
-        # --- CORRECCIÓN AQUÍ ---
         socio_repo = DjangoSocioRepository()
-        auth_repo = DjangoAuthRepository() # Instanciamos el repo de Auth
+        auth_repo = DjangoAuthRepository()
         
-        # Pasamos ambos repositorios al caso de uso
-        use_case = ActualizarSocioUseCase(socio_repo, auth_repo) 
-        # -----------------------
+        use_case = ActualizarSocioUseCase(socio_repo, auth_repo)
         
         try:
             socio_actualizado_dto = use_case.execute(int(pk), actualizar_dto)
