@@ -1,33 +1,83 @@
 # adapters/api/serializers/medidor_serializers.py
 
 from rest_framework import serializers
+from adapters.infrastructure.models import MedidorModel, TerrenoModel
 
-class MedidorSerializer(serializers.Serializer):
+class MedidorSerializer(serializers.ModelSerializer):
     """
-    Serializer de SALIDA (Output).
-    Transforma la Entidad/DTO 'Medidor' a JSON para responder al cliente.
+    Serializer HÍBRIDO: Funciona con DTOs (del Core) y con Modelos (del ORM).
+    Enriquece la respuesta con datos del Barrio y Socio usando el ID del terreno.
     """
-    id = serializers.IntegerField(read_only=True)
-    # Ahora vinculamos al Terreno, no al Socio
-    terreno_id = serializers.IntegerField(allow_null=True, help_text="ID del terreno donde está instalado")
-    
-    codigo = serializers.CharField()
-    marca = serializers.CharField(allow_null=True)
-    
-    # Lectura inicial es vital para cálculos (Float para compatibilidad JSON)
-    lectura_inicial = serializers.FloatField()
-    
-    # 'estado' reemplaza a 'esta_activo'. Ej: ACTIVO, DANADO, ROBADO.
-    estado = serializers.CharField()
-    
-    observacion = serializers.CharField(allow_null=True)
-    fecha_instalacion = serializers.CharField(allow_null=True, read_only=True)
+    nombre_barrio = serializers.SerializerMethodField()
+    nombre_socio = serializers.SerializerMethodField()
+    direccion_terreno = serializers.SerializerMethodField()
 
+    # Mapeamos terreno_id explícitamente por si viene del DTO como entero simple
+    terreno_id = serializers.IntegerField(read_only=True, allow_null=True)
+
+    class Meta:
+        model = MedidorModel
+        fields = [
+            'id',
+            'terreno_id',
+            'codigo',
+            'marca',
+            'lectura_inicial',
+            'estado',
+            'observacion',
+            'fecha_instalacion',
+            # Campos extra para el Frontend
+            'nombre_barrio',
+            'nombre_socio',
+            'direccion_terreno'
+        ]
+
+    # --- HELPERS PARA OBTENER EL TERRENO REAL ---
+    def _get_terreno_real(self, obj):
+        """
+        Método auxiliar que intenta conseguir el objeto Terreno de la BD.
+        Maneja la dualidad: ¿Es un Modelo Django o es una Entidad/DTO?
+        """
+        # 1. Si es un Modelo de Django con la relación ya cargada (Caso ideal)
+        if hasattr(obj, 'terreno') and obj.terreno:
+            return obj.terreno
+
+        # 2. Si es un DTO o Entidad, sacamos el ID y buscamos en BD manualmente
+        t_id = getattr(obj, 'terreno_id', None)
+        if t_id:
+            try:
+                # Usamos select_related para traer barrio y socio en 1 sola consulta
+                return TerrenoModel.objects.select_related('barrio', 'socio').get(id=t_id)
+            except TerrenoModel.DoesNotExist:
+                return None
+        return None
+
+    # --- MÉTODOS CALCULADOS ---
+
+    def get_nombre_barrio(self, obj):
+        terreno = self._get_terreno_real(obj)
+        if terreno and terreno.barrio:
+            return terreno.barrio.nombre
+        return "No Asignado"
+
+    def get_nombre_socio(self, obj):
+        terreno = self._get_terreno_real(obj)
+        if terreno and terreno.socio:
+            return f"{terreno.socio.nombres} {terreno.socio.apellidos}"
+        return "Sin Socio (Inventario)"
+
+    def get_direccion_terreno(self, obj):
+        terreno = self._get_terreno_real(obj)
+        if terreno:
+            return terreno.direccion
+        return "En Inventario / Bodega"
+
+
+# --- SERIALIZERS DE ENTRADA (Mantenemos tu lógica limpia aquí) ---
 
 class RegistrarMedidorSerializer(serializers.Serializer):
     """
     Serializer de ENTRADA (Input) para crear un medidor.
-    Validamos formato antes de pasar al Caso de Uso.
     """
     terreno_id = serializers.IntegerField(required=True, help_text="Terreno donde se instalará")
     codigo = serializers.CharField(max_length=50, required=True)
@@ -35,18 +85,11 @@ class RegistrarMedidorSerializer(serializers.Serializer):
     lectura_inicial = serializers.FloatField(required=False, default=0.0)
     observacion = serializers.CharField(required=False, allow_blank=True)
 
-    # Nota: No pedimos 'estado' ni 'fecha_instalacion', eso lo define el sistema al crear.
-
 
 class ActualizarMedidorSerializer(serializers.Serializer):
     """
     Serializer de ENTRADA para correcciones (PATCH).
-    Solo permite editar datos descriptivos, NO estructurales.
     """
     codigo = serializers.CharField(max_length=50, required=False)
     marca = serializers.CharField(max_length=50, required=False)
     observacion = serializers.CharField(required=False, allow_blank=True)
-    
-    # IMPORTANTE:
-    # No permitimos actualizar 'terreno_id', 'estado' o 'lectura_inicial' aquí.
-    # Esos cambios requieren procesos de negocio (Reemplazo, Traslado, etc).

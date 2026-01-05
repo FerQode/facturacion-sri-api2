@@ -11,6 +11,9 @@ from core.use_cases.registrar_terreno_uc import RegistrarTerrenoUseCase
 from core.use_cases.reemplazar_medidor_uc import ReemplazarMedidorUseCase
 from core.use_cases.medidor_dtos import ReemplazarMedidorDTO
 
+# --- Core: Entidades (NECESARIO PARA CREAR MEDIDORES AL VUELO) ---
+from core.domain.medidor import Medidor  # <--- ¡AQUÍ ESTÁ LA CORRECCIÓN! ✅
+
 # --- Core: Excepciones ---
 from core.shared.exceptions import (
     EntityNotFoundException, 
@@ -47,7 +50,9 @@ class TerrenoViewSet(viewsets.ViewSet):
             "lectura": DjangoLecturaRepository()
         }
 
-    # ... (CREATE se mantiene igual) ...
+    # =================================================================
+    # 1. CREAR (POST)
+    # =================================================================
     @swagger_auto_schema(request_body=TerrenoRegistroSerializer)
     def create(self, request):
         serializer = TerrenoRegistroSerializer(data=request.data)
@@ -74,7 +79,7 @@ class TerrenoViewSet(viewsets.ViewSet):
             return Response({"error": f"Error interno: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     # =================================================================
-    # 2. LISTAR (GET) - CORREGIDO ✅
+    # 2. LISTAR (GET)
     # =================================================================
     @swagger_auto_schema(
         manual_parameters=[
@@ -96,11 +101,9 @@ class TerrenoViewSet(viewsets.ViewSet):
         elif barrio_id:
             terrenos = repo_terreno.list_by_barrio_id(int(barrio_id))
         else:
-            # Si no hay filtros, listamos todos (útil para debug o listados generales)
-            # OJO: Podría ser pesado si hay muchos, pero para tesis está bien.
-            # Implementamos un "list_all" básico manual si no existe en el repo
+            # Listado general limitado
             from adapters.infrastructure.models import TerrenoModel
-            qs = TerrenoModel.objects.all()[:100] # Limite seguridad
+            qs = TerrenoModel.objects.all()[:100]
             terrenos = [repo_terreno._map_model_to_domain(m) for m in qs]
 
         data = []
@@ -113,8 +116,7 @@ class TerrenoViewSet(viewsets.ViewSet):
                 "es_cometida_activa": t.es_cometida_activa,
                 "socio_id": t.socio_id,
                 
-                # ✅ CORRECCIÓN: Agregar ID de barrio para poder editar
-                "barrio_id": t.barrio_id,
+                "barrio_id": t.barrio_id, # ID para edición
 
                 "tiene_medidor": True if medidor else False,
                 "codigo_medidor": medidor.codigo if medidor else None,
@@ -124,7 +126,9 @@ class TerrenoViewSet(viewsets.ViewSet):
 
         return Response(data, status=status.HTTP_200_OK)
 
-    # ... (RETRIEVE se mantiene igual) ...
+    # =================================================================
+    # 3. DETALLE (GET ID)
+    # =================================================================
     def retrieve(self, request, pk=None):
         repos = self._get_repositories()
         terreno = repos['terreno'].get_by_id(int(pk))
@@ -156,7 +160,7 @@ class TerrenoViewSet(viewsets.ViewSet):
         return Response(response, status=status.HTTP_200_OK)
 
     # =================================================================
-    # 4. ACTUALIZAR (PATCH) - MEJORADO ✅
+    # 4. ACTUALIZAR (PATCH) - CON LÓGICA DE CREACIÓN DE MEDIDOR ✅
     # =================================================================
     @swagger_auto_schema(request_body=TerrenoActualizacionSerializer)
     def partial_update(self, request, pk=None):
@@ -179,29 +183,61 @@ class TerrenoViewSet(viewsets.ViewSet):
         if 'barrio_id' in data: terreno.barrio_id = data['barrio_id']
         if 'es_cometida_activa' in data: terreno.es_cometida_activa = data['es_cometida_activa']
 
-        repo_terreno.save(terreno) # Ahora sí usa el save() corregido
+        repo_terreno.save(terreno)
 
-        # 2. ✅ NUEVO: Permitir editar código de medidor si viene en el payload (aunque el serializer no lo tenga explícito)
-        # Esto es un "plus" para que la UI funcione fluido
+        # 2. Gestionar el Código del Medidor (Upsert: Actualizar o Crear)
         if 'codigo_medidor' in request.data:
             nuevo_codigo = request.data['codigo_medidor']
-            medidor_actual = repo_medidor.get_by_terreno_id(terreno.id)
             
-            if medidor_actual and nuevo_codigo:
-                # Actualización directa vía ORM (bypass temporal para edición rápida)
-                try:
-                    m_model = MedidorModel.objects.get(id=medidor_actual.id)
-                    m_model.codigo = nuevo_codigo
-                    m_model.save()
-                except Exception as e:
-                    print(f"Error actualizando medidor: {e}")
+            if nuevo_codigo:
+                medidor_actual = repo_medidor.get_by_terreno_id(terreno.id)
+                
+                if medidor_actual:
+                    # CASO A: Ya tiene medidor -> Actualizamos el código
+                    try:
+                        m_model = MedidorModel.objects.get(id=medidor_actual.id)
+                        m_model.codigo = nuevo_codigo
+                        m_model.save()
+                    except Exception as e:
+                        print(f"Error actualizando medidor: {e}")
+                else:
+                    # CASO B: No tenía medidor -> LO CREAMOS
+                    try:
+                        # Creamos la entidad de dominio (AQUÍ ES DONDE DABA ERROR ANTES)
+                        nuevo_medidor = Medidor(
+                            id=None,
+                            terreno_id=terreno.id,
+                            codigo=nuevo_codigo,
+                            marca="GENERICO",       
+                            lectura_inicial=0.0,    
+                            estado='ACTIVO'
+                        )
+                        repo_medidor.create(nuevo_medidor)
+                    except Exception as e:
+                         return Response({"advertencia": f"Terreno actualizado, pero error al crear medidor: {str(e)}"}, status=status.HTTP_200_OK)
 
         return Response({"mensaje": "Datos actualizados correctamente"}, status=status.HTTP_200_OK)
 
-    # ... (REEMPLAZAR MEDIDOR se mantiene igual) ...
+    # =================================================================
+    # 5. REEMPLAZAR MEDIDOR (ACTION POST)
+    # =================================================================
+    @swagger_auto_schema(
+        method='post',
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['lectura_final_viejo', 'motivo_cambio', 'codigo_nuevo', 'marca_nueva'],
+            properties={
+                'lectura_final_viejo': openapi.Schema(type=openapi.TYPE_NUMBER),
+                'motivo_cambio': openapi.Schema(type=openapi.TYPE_STRING),
+                'codigo_nuevo': openapi.Schema(type=openapi.TYPE_STRING),
+                'marca_nueva': openapi.Schema(type=openapi.TYPE_STRING),
+                'lectura_inicial_nuevo': openapi.Schema(type=openapi.TYPE_NUMBER, default=0.0),
+            }
+        ),
+        responses={200: "Cambio exitoso", 400: "Error de validación"}
+    )
     @action(detail=True, methods=['post'], url_path='reemplazar-medidor')
     def reemplazar_medidor(self, request, pk=None):
-        # (El código es el mismo de arriba, no cambia)
         data = request.data
         repos = self._get_repositories()
         usuario_id = request.user.id if request.user and request.user.is_authenticated else 1
