@@ -13,8 +13,8 @@ class SocioSerializer(serializers.Serializer):
     apellidos = serializers.CharField(max_length=100)
     
     # --- CAMBIOS DE SINCRONIZACIÓN ---
-    # Antes: barrio = serializers.CharField(...)
-    barrio_id = serializers.IntegerField(allow_null=True) # ID numérico del barrio
+    # POR ESTA LÍNEA (Usamos source para mantener el nombre 'barrio' en el JSON):
+    barrio = serializers.IntegerField(source='barrio_id', allow_null=True)
     direccion = serializers.CharField(max_length=200, allow_null=True, required=False) # Nueva dirección
     # ---------------------------------
 
