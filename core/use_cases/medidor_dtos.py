@@ -1,3 +1,4 @@
+# core>uses_cases>medidor_dtos.py
 from dataclasses import dataclass
 from typing import Optional
 

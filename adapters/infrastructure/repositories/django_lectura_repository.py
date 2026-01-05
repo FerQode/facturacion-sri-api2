@@ -1,42 +1,42 @@
 # adapters/infrastructure/repositories/django_lectura_repository.py
 
 from typing import List, Optional
-
-# Contratos (Interfaces)
 from core.interfaces.repositories import ILecturaRepository
-# Entidades (Dominio)
 from core.domain.lectura import Lectura
-# Modelos (Base de Datos)
-from adapters.infrastructure.models.lectura_model import LecturaModel
+from adapters.infrastructure.models import LecturaModel
 
 class DjangoLecturaRepository(ILecturaRepository):
     """
-    Implementación del Repositorio de Lecturas usando el ORM de Django.
-    Actualizado para Fase 4 (Soporte de decimales y nuevos campos).
+    Implementación del Repositorio de Lecturas usando Django ORM.
+    CORREGIDO: Alineado exactamente con core/domain/lectura.py
     """
 
     def _to_entity(self, model: LecturaModel) -> Lectura:
         """
-        Mapeador: Modelo Django -> Entidad Dominio.
+        Mapea ORM (Base de Datos) -> Entidad (Dominio).
         """
+        # Manejo de nulos para lectura_anterior
+        ant = float(model.lectura_anterior) if model.lectura_anterior is not None else 0.0
+        
+        # Manejo de consumo
+        consumo = float(model.consumo_del_mes) if model.consumo_del_mes is not None else 0.0
+
         return Lectura(
             id=model.id,
             medidor_id=model.medidor_id,
             
-            # --- CAMBIOS CRÍTICOS ---
-            # 1. Mapeamos 'valor' (Decimal en BDD) a float (Entidad)
+            # --- CORRECCIÓN DE NOMBRES ---
+            # Usamos 'fecha' porque así se llama en tu Entidad de Dominio
+            fecha=model.fecha, 
+            
+            # Usamos 'valor' porque así se llama en tu Entidad de Dominio
             valor=float(model.valor), 
             
-            # 2. Mapeamos 'fecha' (antes fecha_lectura)
-            fecha=model.fecha,
+            lectura_anterior=ant,
+            consumo_del_mes_m3=consumo,
             
-            # 3. Nuevos campos de auditoría
             observacion=model.observacion,
             esta_facturada=model.esta_facturada
-            
-            # Nota: 'lectura_anterior' es opcional en la entidad y no se guarda 
-            # en la fila actual del modelo, por eso no lo asignamos aquí 
-            # (se calcula en tiempo de ejecución si se necesita).
         )
 
     def get_by_id(self, lectura_id: int) -> Optional[Lectura]:
@@ -47,48 +47,49 @@ class DjangoLecturaRepository(ILecturaRepository):
             return None
 
     def get_latest_by_medidor(self, medidor_id: int) -> Optional[Lectura]:
-        """
-        Obtiene la última lectura registrada para un medidor.
-        Vital para calcular el consumo del siguiente mes.
-        """
         try:
-            # Usamos 'latest()' basado en el 'get_latest_by' definido en el Meta del modelo
+            # .latest() usa el 'get_latest_by' del Meta del modelo ('fecha')
             model = LecturaModel.objects.filter(medidor_id=medidor_id).latest()
             return self._to_entity(model)
         except LecturaModel.DoesNotExist:
             return None
 
-    def list_by_medidor_id(self, medidor_id: int) -> List[Lectura]:
+    # --- EL MÉTODO QUE FALTABA Y CAUSABA EL ERROR 500 ---
+    def list_by_medidor(self, medidor_id: int, limit: int = 12) -> List[Lectura]:
         """
-        Devuelve el historial de lecturas de un medidor.
+        Obtiene el historial de lecturas de un medidor.
         """
-        models = LecturaModel.objects.filter(medidor_id=medidor_id).order_by('-fecha')
+        models = LecturaModel.objects.filter(medidor_id=medidor_id).order_by('-fecha')[:limit]
         return [self._to_entity(m) for m in models]
 
     def save(self, lectura: Lectura) -> Lectura:
         """
-        Guarda o actualiza una lectura.
+        Guarda o actualiza la Entidad en la BBDD.
         """
-        if lectura.id:
-            # Update
-            try:
-                model = LecturaModel.objects.get(pk=lectura.id)
-            except LecturaModel.DoesNotExist:
-                model = LecturaModel()
-        else:
-            # Create
-            model = LecturaModel()
+        # Mapeo Inverso: Dominio -> Base de Datos
+        data_db = {
+            'medidor_id': lectura.medidor_id,
+            
+            # Mapeo exacto: Entidad.fecha -> Modelo.fecha
+            'fecha': lectura.fecha, 
+            
+            # Mapeo exacto: Entidad.valor -> Modelo.valor
+            'valor': lectura.valor, 
+            
+            'lectura_anterior': lectura.lectura_anterior,
+            'consumo_del_mes': lectura.consumo_del_mes_m3,
+            
+            'observacion': lectura.observacion,
+            'esta_facturada': lectura.esta_facturada
+        }
 
-        # Mapeo Entidad -> Modelo
-        model.medidor_id = lectura.medidor_id
+        if lectura.id:
+            # UPDATE
+            LecturaModel.objects.filter(pk=lectura.id).update(**data_db)
+            # No es necesario recargar el objeto
+        else:
+            # CREATE
+            model = LecturaModel.objects.create(**data_db)
+            lectura.id = model.id
         
-        # --- CAMBIOS CRÍTICOS ---
-        model.valor = lectura.valor  # Guardamos en el campo nuevo
-        model.fecha = lectura.fecha
-        model.observacion = lectura.observacion
-        model.esta_facturada = lectura.esta_facturada
-        
-        model.save()
-        
-        # Devolvemos la entidad con el ID generado
-        return self._to_entity(model)
+        return lectura

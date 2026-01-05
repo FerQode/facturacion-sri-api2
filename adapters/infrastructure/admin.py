@@ -69,10 +69,24 @@ class MedidorAdmin(admin.ModelAdmin):
 
 @admin.register(LecturaModel)
 class LecturaAdmin(admin.ModelAdmin):
-    list_display = ('id', 'get_medidor_codigo', 'fecha', 'valor', 'esta_facturada')
+    # CORRECCIÓN 1: Agregamos las nuevas columnas al listado
+    list_display = (
+        'id', 
+        'get_medidor_codigo', 
+        'fecha', 
+        'valor', 
+        'lectura_anterior',  # Nuevo campo
+        'consumo_del_mes',   # Nuevo campo
+        'esta_facturada'
+    )
+    
     list_filter = ('fecha', 'esta_facturada')
     search_fields = ('medidor__codigo',)
     ordering = ('-fecha',)
+
+    # CORRECCIÓN 2: Protección de Integridad
+    # Estos campos son calculados por el sistema y NO deben editarse a mano.
+    readonly_fields = ('lectura_anterior', 'consumo_del_mes', 'fecha_registro')
 
     def get_medidor_codigo(self, obj):
         return obj.medidor.codigo

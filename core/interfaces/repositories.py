@@ -9,98 +9,86 @@ from core.domain.medidor import Medidor
 from core.domain.lectura import Lectura
 from core.domain.factura import Factura
 from core.domain.barrio import Barrio 
-from core.domain.terreno import Terreno # <--- [NUEVO] Importamos la entidad Terreno
+from core.domain.terreno import Terreno
 from core.shared.enums import EstadoFactura, RolUsuario
 
 """
-Interfaces de Repositorio:
-Definen los contratos que la capa de Casos de Uso (Use Cases)
-utilizará para interactuar con la base de datos.
+Interfaces de Repositorio (Clean Architecture):
+Definen los contratos estrictos que la capa de Casos de Uso utilizará.
+La implementación concreta (Django ORM) estará en 'adapters/infrastructure/repositories'.
 """
 
 class ISocioRepository(ABC):
-    
     @abstractmethod
     def get_by_id(self, socio_id: int) -> Optional[Socio]:
-        """Obtiene un socio por su ID."""
+        """Obtiene un socio por su ID único."""
         pass
 
     @abstractmethod
     def get_by_cedula(self, cedula: str) -> Optional[Socio]:
-        """Obtiene un socio por su cédula."""
+        """Obtiene un socio por su cédula de identidad."""
         pass
 
     @abstractmethod
     def list_all(self) -> List[Socio]:
-        """Lista todos los socios."""
+        """Lista todos los socios activos en el sistema."""
         pass
 
     @abstractmethod
     def save(self, socio: Socio) -> Socio:
-        """Guarda o actualiza un socio en la BBDD."""
+        """Guarda (crea) o actualiza un socio en la base de datos."""
         pass
     
     @abstractmethod
     def get_by_usuario_id(self, usuario_id: int) -> Optional[Socio]:
-        """Obtiene el socio vinculado a un ID de usuario de Django."""
+        """Obtiene el perfil de socio vinculado a una cuenta de usuario (login)."""
         pass
 
-# --- NUEVA INTERFAZ PARA TERRENOS (FASE 2) ---
+
 class ITerrenoRepository(ABC):
     """
-    Contrato para gestionar los puntos de suministro (Terrenos).
+    Gestión de Puntos de Suministro (Terrenos).
+    Un Socio tiene N Terrenos. Un Terreno tiene 1 Medidor.
     """
     @abstractmethod
     def save(self, terreno: Terreno) -> Terreno:
-        """Guarda o actualiza un terreno (Create/Update)."""
+        """Persiste los cambios de un terreno."""
         pass
 
     @abstractmethod
     def get_by_id(self, terreno_id: int) -> Optional[Terreno]:
-        """Obtiene un terreno por su ID."""
+        """Busca un terreno por su ID."""
         pass
 
     @abstractmethod
     def list_by_socio_id(self, socio_id: int) -> List[Terreno]:
-        """
-        Lista todos los terrenos que pertenecen a un socio.
-        Fundamental para que el socio vea sus propiedades.
-        """
+        """Lista todas las propiedades de un socio."""
         pass
 
     @abstractmethod
     def list_by_barrio_id(self, barrio_id: int) -> List[Terreno]:
-        """[NUEVO] Lista terrenos filtrados por barrio."""
+        """Filtra terrenos por ubicación geográfica (Barrio)."""
         pass
     
     @abstractmethod
     def create(self, terreno: Terreno) -> Terreno:
-        """
-        Método explícito de creación (útil para diferenciar de updates en lógica compleja).
-        """
+        """Método explícito para crear un nuevo terreno."""
         pass
 
 
 class IMedidorRepository(ABC):
-    """
-    Actualizado para Fase 2: El medidor se vincula al Terreno.
-    """
     @abstractmethod
     def get_by_id(self, medidor_id: int) -> Optional[Medidor]:
         pass
 
     @abstractmethod
     def get_by_codigo(self, codigo: str) -> Optional[Medidor]:
-        """Busca un medidor por su código único (serial)."""
+        """Busca por serial/código único del dispositivo."""
         pass
 
-    # --- CAMBIO FASE 2 ---
     @abstractmethod
     def get_by_terreno_id(self, terreno_id: int) -> Optional[Medidor]:
-        """
-        Obtiene el medidor instalado en un terreno específico.
-        Recuerda: Un terreno tiene máximo 1 medidor activo.
-        """
+        """Obtiene el medidor activo instalado en un terreno."""
         pass
 
     @abstractmethod
@@ -113,7 +101,6 @@ class IMedidorRepository(ABC):
     
     @abstractmethod
     def create(self, medidor: Medidor) -> Medidor:
-        """Creación explícita."""
         pass
 
 
@@ -142,10 +129,16 @@ class IBarrioRepository(ABC):
 class ILecturaRepository(ABC):
     @abstractmethod
     def get_latest_by_medidor(self, medidor_id: int) -> Optional[Lectura]:
+        """Obtiene la última lectura registrada para calcular el consumo del mes actual."""
         pass
     
     @abstractmethod
     def get_by_id(self, lectura_id: int) -> Optional[Lectura]:
+        pass
+
+    @abstractmethod
+    def list_by_medidor(self, medidor_id: int, limit: int = 12) -> List[Lectura]:
+        """[MEJORA] Obtiene historial de lecturas (ej: últimos 12 meses)."""
         pass
 
     @abstractmethod
@@ -160,6 +153,15 @@ class IFacturaRepository(ABC):
 
     @abstractmethod
     def get_by_clave_acceso(self, clave_acceso: str) -> Optional[Factura]:
+        """Busca una factura por la clave de acceso del SRI (49 dígitos)."""
+        pass
+
+    @abstractmethod
+    def get_by_lectura_id(self, lectura_id: int) -> Optional[Factura]:
+        """
+        [CRÍTICO] Busca si ya existe una factura generada para una lectura específica.
+        Vital para la Idempotencia (evitar duplicados).
+        """
         pass
 
     @abstractmethod
@@ -178,12 +180,14 @@ class IFacturaRepository(ABC):
 
     @abstractmethod
     def save(self, factura: Factura) -> Factura:
+        """Crea o actualiza una factura y sus detalles."""
         pass
 
 
 class IAuthRepository(ABC):
     @abstractmethod
     def crear_usuario(self, username: str, password: str, email: str = None, rol: 'RolUsuario' = None) -> int:
+        """Crea un usuario en el sistema de identidad y retorna su ID."""
         pass
 
     @abstractmethod

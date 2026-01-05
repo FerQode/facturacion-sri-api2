@@ -1,3 +1,4 @@
+# adapters>infrastructure>models>terreno_model.py
 from django.db import models
 from .socio_model import SocioModel
 from .barrio_model import BarrioModel

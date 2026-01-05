@@ -2,6 +2,7 @@
 
 from rest_framework import serializers
 from datetime import date, timedelta
+from core.shared.enums import EstadoFactura
 
 class GenerarFacturaSerializer(serializers.Serializer):
     """
@@ -44,6 +45,36 @@ class GenerarFacturaSerializer(serializers.Serializer):
     
     # --- AÑADIR ESTA NUEVA CLASE AL FINAL ---
 
+class DetalleFacturaSerializer(serializers.Serializer):
+    """Serializa los ítems dentro de la factura para el Frontend"""
+    concepto = serializers.CharField()
+    cantidad = serializers.DecimalField(max_digits=10, decimal_places=2)
+    precio_unitario = serializers.DecimalField(max_digits=10, decimal_places=4)
+    subtotal = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+class FacturaResponseSerializer(serializers.Serializer):
+    """
+    Este es el JSON FINAL que recibe el Frontend.
+    Mapea la Entidad de Dominio a JSON.
+    """
+    id = serializers.IntegerField()
+    socio_id = serializers.IntegerField()
+    fecha_emision = serializers.DateField()
+    fecha_vencimiento = serializers.DateField()
+    estado = serializers.ChoiceField(choices=[e.value for e in EstadoFactura])
+    
+    # Totales
+    subtotal = serializers.DecimalField(max_digits=10, decimal_places=2)
+    impuestos = serializers.DecimalField(max_digits=10, decimal_places=2)
+    total = serializers.DecimalField(max_digits=10, decimal_places=2)
+    
+    # Datos SRI (Para mostrar alertas en el Frontend)
+    sri_estado = serializers.CharField(source='estado_sri', allow_null=True, required=False) # Mapeamos atributos opcionales
+    sri_mensaje = serializers.CharField(source='mensaje_sri', allow_null=True, required=False)
+    sri_clave_acceso = serializers.CharField(allow_null=True, required=False)
+
+    # Detalles (Nested)
+    detalles = DetalleFacturaSerializer(many=True)
 class EnviarFacturaSRISerializer(serializers.Serializer):
     """
     Valida el JSON de entrada para el Caso de Uso EnviarFacturaSRIUseCase.
