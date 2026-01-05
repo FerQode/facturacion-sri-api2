@@ -6,14 +6,9 @@ from django.db import transaction, IntegrityError
 # 1. Imports de Core (Contratos y Dominio)
 from core.interfaces.repositories import ITerrenoRepository
 from core.domain.terreno import Terreno
-from core.domain.medidor import Medidor
-from core.shared.exceptions import MedidorDuplicadoError
 
 # 2. Imports de Infraestructura (Modelos Django)
 from adapters.infrastructure.models.terreno_model import TerrenoModel
-from adapters.infrastructure.models.medidor_model import MedidorModel
-# Importamos Barrio y Socio solo si necesitamos validaciones extra, 
-# pero Django permite asignar por ID directo usando 'barrio_id' y 'socio_id' en el constructor.
 
 class DjangoTerrenoRepository(ITerrenoRepository):
     """
@@ -22,42 +17,44 @@ class DjangoTerrenoRepository(ITerrenoRepository):
     """
 
     def create(self, terreno: Terreno) -> Terreno:
-        """
-        Crea un nuevo terreno y opcionalmente su medidor en una transacción atómica.
-        Alias para save() en contexto de creación.
-        """
         return self.save(terreno)
 
     def save(self, terreno: Terreno) -> Terreno:
         """
         Persiste un objeto de dominio Terreno en la base de datos.
-        Maneja la creación del registro en 'terrenos' y, si corresponde, en 'medidores'.
+        CORREGIDO: Detecta si es INSERT o UPDATE para evitar duplicados.
         """
         try:
             with transaction.atomic():
-                # 1. Mapeo Dominio -> Modelo Django (Terreno)
-                # Usamos los _id directos para eficiencia (Django lo permite)
-                terreno_model = TerrenoModel(
-                    socio_id=terreno.socio_id,
-                    barrio_id=terreno.barrio_id,
-                    direccion=terreno.direccion,
-                    es_cometida_activa=terreno.es_cometida_activa
-                )
-                
-                # 2. Guardar Terreno (Genera el ID en BBDD)
-                terreno_model.save()
-                
-                # Actualizamos el ID del objeto de dominio con el generado por la BD
-                terreno.id = terreno_model.id
+                terreno_model = None
 
-                # 3. Verificar si el Dominio trae un Medidor para crear
-                # Nota: En tu Caso de Uso (RegistrarTerrenoUseCase), el medidor se crea APARTE
-                # llamando a MedidorRepository.create(). 
-                # Sin embargo, si quisieras guardar todo junto aquí, se haría así.
-                # PERO, respetando tu Caso de Uso actual, este método save() 
-                # se enfoca en persistir el Terreno correctamente.
+                # 1. INTENTO DE UPDATE (Si el objeto ya tiene ID)
+                if terreno.id:
+                    try:
+                        terreno_model = TerrenoModel.objects.get(id=terreno.id)
+                        # Actualizamos campos explícitamente
+                        terreno_model.socio_id = terreno.socio_id
+                        terreno_model.barrio_id = terreno.barrio_id
+                        terreno_model.direccion = terreno.direccion
+                        terreno_model.es_cometida_activa = terreno.es_cometida_activa
+                        # Guardamos sobre el registro existente
+                        terreno_model.save()
+                    except TerrenoModel.DoesNotExist:
+                        pass # Si no existe, pasamos a crear
                 
-                # Convertimos el modelo guardado de vuelta a Dominio para retornar datos frescos
+                # 2. INTENTO DE INSERT (Si no tenía ID o no se encontró)
+                if not terreno_model:
+                    terreno_model = TerrenoModel(
+                        socio_id=terreno.socio_id,
+                        barrio_id=terreno.barrio_id,
+                        direccion=terreno.direccion,
+                        es_cometida_activa=terreno.es_cometida_activa
+                    )
+                    terreno_model.save()
+                
+                # Actualizamos el ID del objeto de dominio
+                terreno.id = terreno_model.id
+                
                 return self._map_model_to_domain(terreno_model)
 
         except Exception as e:
@@ -76,26 +73,17 @@ class DjangoTerrenoRepository(ITerrenoRepository):
         return [self._map_model_to_domain(model) for model in qs]
     
     def list_by_barrio_id(self, barrio_id: int) -> List[Terreno]:
-        """
-        Implementación: SELECT * FROM terrenos WHERE barrio_id = X
-        """
-        # Usamos select_related para optimizar y traer el nombre del barrio en 1 sola consulta
         qs = TerrenoModel.objects.select_related('barrio').filter(barrio_id=barrio_id)
         return [self._map_model_to_domain(model) for model in qs]
 
     # --- MÉTODOS AUXILIARES DE MAPEO ---
 
     def _map_model_to_domain(self, model: TerrenoModel) -> Terreno:
-        """
-        Convierte un TerrenoModel (Django) a Terreno (Dominio).
-        """
         return Terreno(
             id=model.id,
             socio_id=model.socio_id,
             barrio_id=model.barrio_id,
             direccion=model.direccion,
             es_cometida_activa=model.es_cometida_activa,
-            # Campos opcionales enriquecidos
             nombre_barrio=model.barrio.nombre if model.barrio else None,
-            # nombre_socio podría agregarse si el dominio lo tiene
         )

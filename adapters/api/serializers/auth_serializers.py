@@ -5,28 +5,40 @@ from core.shared.enums import RolUsuario
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
     Personaliza el token JWT para incluir información extra del usuario (Claims).
+    Adaptado para devolver nombres reales del Socio si existen.
     """
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
 
-        # 1. Añadir el nombre de usuario
+        # 1. Datos básicos de cuenta
         token['username'] = user.username
         
-        # 2. Añadir el Rol
-        # Buscamos si el usuario tiene un perfil de Socio asociado
-        if hasattr(user, 'perfil_socio'):
-            # Si es un Socio, obtenemos su rol desde la entidad Socio
-            # (Guardamos el valor string del enum, ej: "Tesorero")
-            token['rol'] = user.perfil_socio.rol 
-            token['socio_id'] = user.perfil_socio.id
-        elif user.is_superuser:
-            # Si es superuser y no tiene socio, le ponemos rol Admin
-            token['rol'] = RolUsuario.ADMINISTRADOR.value
-            token['socio_id'] = None
+        # 2. LÓGICA DE FUSIÓN (Auth User + Tabla Socio)
+        # Verificamos si el usuario tiene un perfil de Socio asociado
+        # 'perfil_socio' es el related_name definido en SocioModel
+        if hasattr(user, 'perfil_socio') and user.perfil_socio:
+            socio = user.perfil_socio
+            
+            # --- ¡AQUÍ ESTÁ LA MAGIA PARA EL FRONTEND! ---
+            # Sacamos los nombres de la tabla SOCIO, donde están los datos reales
+            token['first_name'] = socio.nombres 
+            token['last_name'] = socio.apellidos 
+            
+            token['rol'] = socio.rol 
+            token['socio_id'] = socio.id
+            
         else:
-            # Caso fallback
-            token['rol'] = "Usuario"
+            # CASO: ADMIN / USUARIO SIN PERFIL DE SOCIO
+            # Aquí sí usamos los datos de la tabla de usuarios de Django
+            token['first_name'] = user.first_name
+            token['last_name'] = user.last_name
+
+            if user.is_superuser:
+                token['rol'] = RolUsuario.ADMINISTRADOR.value
+            else:
+                token['rol'] = "Usuario"
+            
             token['socio_id'] = None
 
         return token

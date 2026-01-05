@@ -29,25 +29,23 @@ router.register(r'medidores', medidor_views.MedidorViewSet, basename='medidor')
 router.register(r'barrios', barrio_views.BarrioViewSet, basename='barrio')
 router.register(r'terrenos', terreno_views.TerrenoViewSet, basename='terreno')
 
+# 3. Gestión de Lecturas (NUEVO: Incluye Historial y Registro)
+# Genera:
+# POST /api/v1/lecturas/ (Registrar)
+# GET /api/v1/lecturas/?medidor_id=X (Historial)
+router.register(r'lecturas', lectura_views.LecturaViewSet, basename='lectura')
+
 
 # ==============================================================================
 # B. RUTAS TRANSACCIONALES (APIViews)
 # ==============================================================================
-# Estas rutas ejecutan "Casos de Uso" complejos, no son simples CRUDs.
+# Estas rutas ejecutan "Casos de Uso" complejos que no encajan en un CRUD simple.
 # Se definen manualmente con 'path' para tener control total de la URL.
 
 urlpatterns = [
-    # --- Módulo de Lecturas ---
-    # Registra la lectura del medidor (inmutable una vez creada)
-    path(
-        'lecturas/registrar/', 
-        lectura_views.RegistrarLecturaAPIView.as_view(), 
-        name='registrar-lectura'
-    ),
     
     # --- Módulo de Facturación & SRI ---
     # 1. Generar: Toma una lectura, calcula montos, firma XML y envía al SRI.
-    # URL Final: POST /api/v1/facturas/generar/
     path(
         'facturas/generar/', 
         factura_views.GenerarFacturaAPIView.as_view(), 
@@ -69,6 +67,6 @@ urlpatterns = [
     ),
     
     # --- Inclusión de las Rutas Automáticas del Router ---
-    # Se pone al final para que no interfiera con las rutas manuales específicas.
+    # Se pone al final para que capture todas las rutas generadas arriba.
     path('', include(router.urls)),
 ]
