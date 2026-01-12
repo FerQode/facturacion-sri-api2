@@ -1,32 +1,30 @@
+# adapters/infrastructure/admin.py
+
 from django.contrib import admin
 
 # 1. Importamos los modelos
-# (Asegúrate de que FacturaModel y DetalleFacturaModel existan en models/__init__.py)
+# (Asegúrate de que TODOS existan en models/__init__.py, tal como lo actualizamos antes)
 from .models import (
     SocioModel, 
     MedidorModel, 
     LecturaModel, 
     BarrioModel, 
     TerrenoModel,
-    FacturaModel,        # Si aún no has creado este archivo, coméntalo
-    DetalleFacturaModel  # Si aún no has creado este archivo, coméntalo
+    FacturaModel,        
+    DetalleFacturaModel,
+    MultaModel,  # ✅ NUEVO
+    PagoModel    # ✅ NUEVO
 )
 
 @admin.register(BarrioModel)
 class BarrioAdmin(admin.ModelAdmin):
-    # Usamos 'id' y 'nombre' que son seguros. 
-    # Si tienes 'activo' en el modelo, descomenta la línea de abajo.
     list_display = ('id', 'nombre') 
     search_fields = ('nombre',)
 
 @admin.register(SocioModel)
 class SocioAdmin(admin.ModelAdmin):
-    # --- CORRECCIÓN: Usamos 'barrio' en lugar de 'barrio_domicilio' ---
     list_display = ('cedula', 'apellidos', 'nombres', 'barrio', 'rol', 'esta_activo')
-    
-    # Filtros laterales
     list_filter = ('rol', 'esta_activo', 'barrio')
-    
     search_fields = ('cedula', 'nombres', 'apellidos')
     ordering = ['apellidos'] 
 
@@ -35,7 +33,6 @@ class SocioAdmin(admin.ModelAdmin):
             'fields': ('cedula', 'nombres', 'apellidos')
         }),
         ('Contacto', {
-            # Aquí también cambiamos a 'barrio'
             'fields': ('email', 'telefono', 'barrio', 'direccion')
         }),
         ('Sistema', {
@@ -48,7 +45,6 @@ class TerrenoAdmin(admin.ModelAdmin):
     list_display = ('id', 'get_socio_nombre', 'barrio', 'direccion', 'es_cometida_activa')
     list_filter = ('es_cometida_activa', 'barrio')
     search_fields = ('direccion', 'socio__cedula', 'socio__apellidos')
-    
     autocomplete_fields = ['socio', 'barrio']
 
     def get_socio_nombre(self, obj):
@@ -69,42 +65,62 @@ class MedidorAdmin(admin.ModelAdmin):
 
 @admin.register(LecturaModel)
 class LecturaAdmin(admin.ModelAdmin):
-    # CORRECCIÓN 1: Agregamos las nuevas columnas al listado
     list_display = (
         'id', 
         'get_medidor_codigo', 
         'fecha', 
         'valor', 
-        'lectura_anterior',  # Nuevo campo
-        'consumo_del_mes',   # Nuevo campo
+        'lectura_anterior',
+        'consumo_del_mes',
         'esta_facturada'
     )
-    
     list_filter = ('fecha', 'esta_facturada')
     search_fields = ('medidor__codigo',)
     ordering = ('-fecha',)
-
-    # CORRECCIÓN 2: Protección de Integridad
-    # Estos campos son calculados por el sistema y NO deben editarse a mano.
     readonly_fields = ('lectura_anterior', 'consumo_del_mes', 'fecha_registro')
 
     def get_medidor_codigo(self, obj):
         return obj.medidor.codigo
     get_medidor_codigo.short_description = "Medidor"
 
-# --- FACTURACIÓN (Si ya tienes los modelos creados) ---
+# --- ✅ SECCIÓN DE MULTAS (NUEVO) ---
+@admin.register(MultaModel)
+class MultaAdmin(admin.ModelAdmin):
+    list_display = ('id', 'socio', 'motivo', 'valor', 'estado', 'fecha_registro')
+    list_filter = ('estado', 'fecha_registro')
+    search_fields = ('socio__nombres', 'socio__cedula', 'motivo')
+    list_editable = ('estado',) # Útil para marcar PAGADA rápido en pruebas
+
+# --- ✅ SECCIÓN DE FACTURACIÓN Y PAGOS ---
 
 class DetalleFacturaInline(admin.TabularInline):
     model = DetalleFacturaModel
     extra = 0
-    # Asegúrate que el modelo Detalle tenga 'subtotal' o el campo que quieras mostrar
-    # readonly_fields = ('subtotal',) 
+    readonly_fields = ('subtotal',)
+
+class PagoInline(admin.TabularInline):
+    """Permite ver los pagos (Efectivo/Transferencia) dentro de la factura"""
+    model = PagoModel
+    extra = 0
+    can_delete = False
+    readonly_fields = ('fecha_registro',)
 
 @admin.register(FacturaModel)
 class FacturaAdmin(admin.ModelAdmin):
-    # Asegúrate que FacturaModel tenga relación 'socio' (o 'terreno')
-    list_display = ('id', 'fecha_emision', 'estado', 'total', 'estado_sri')
+    list_display = ('id', 'get_socio', 'fecha_emision', 'total', 'estado', 'estado_sri')
     list_filter = ('estado', 'estado_sri', 'fecha_emision')
-    # search_fields = ('socio__cedula', 'clave_acceso_sri') 
+    search_fields = ('socio__cedula', 'sri_clave_acceso') 
     
-    inlines = [DetalleFacturaInline]
+    # Mostramos Detalles y Pagos en la misma ficha
+    inlines = [DetalleFacturaInline, PagoInline]
+
+    def get_socio(self, obj):
+        # Ajusta según tu modelo, si socio es FK directa o via terreno
+        if hasattr(obj, 'socio'):
+            return f"{obj.socio.nombres} {obj.socio.apellidos}"
+        return "N/A"
+
+@admin.register(PagoModel)
+class PagoAdmin(admin.ModelAdmin):
+    list_display = ('id', 'factura', 'metodo', 'monto', 'referencia', 'fecha_registro')
+    list_filter = ('metodo',)

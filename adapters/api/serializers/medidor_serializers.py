@@ -1,16 +1,20 @@
 # adapters/api/serializers/medidor_serializers.py
 
 from rest_framework import serializers
-from adapters.infrastructure.models import MedidorModel, TerrenoModel
+# ✅ Importamos LecturaModel para poder consultar el historial
+from adapters.infrastructure.models import MedidorModel, TerrenoModel, LecturaModel
 
 class MedidorSerializer(serializers.ModelSerializer):
     """
     Serializer HÍBRIDO: Funciona con DTOs (del Core) y con Modelos (del ORM).
-    Enriquece la respuesta con datos del Barrio y Socio usando el ID del terreno.
+    Enriquece la respuesta con datos del Barrio, Socio y la Última Lectura registrada.
     """
     nombre_barrio = serializers.SerializerMethodField()
     nombre_socio = serializers.SerializerMethodField()
     direccion_terreno = serializers.SerializerMethodField()
+    
+    # ✅ Campo calculado: Última lectura (vital para validar la nueva lectura en frontend)
+    lectura_anterior = serializers.SerializerMethodField()
 
     # Mapeamos terreno_id explícitamente por si viene del DTO como entero simple
     terreno_id = serializers.IntegerField(read_only=True, allow_null=True)
@@ -23,6 +27,7 @@ class MedidorSerializer(serializers.ModelSerializer):
             'codigo',
             'marca',
             'lectura_inicial',
+            'lectura_anterior', # <--- ¡Asegúrate de que esté aquí!
             'estado',
             'observacion',
             'fecha_instalacion',
@@ -71,6 +76,26 @@ class MedidorSerializer(serializers.ModelSerializer):
         if terreno:
             return terreno.direccion
         return "En Inventario / Bodega"
+
+    # ✅ LÓGICA DE TU COMPAÑERO (CORRECTA)
+    def get_lectura_anterior(self, obj):
+        """
+        Busca la última lectura registrada para este medidor.
+        Si no hay lecturas previas, devuelve la lectura inicial del medidor.
+        """
+        try:
+            # Buscamos en la tabla de lecturas, filtrando por este medidor
+            # Ordenamos por fecha descendente (la más nueva primero)
+            # Nota: obj.id es el ID del medidor
+            ultima_lectura = LecturaModel.objects.filter(medidor_id=obj.id).order_by('-fecha', '-id').first()
+
+            if ultima_lectura:
+                return float(ultima_lectura.valor) # Devolvemos la última lectura real
+        except Exception:
+            pass # Si algo falla, usamos el valor por defecto
+
+        # Si no hay historial, devolvemos la lectura inicial del medidor
+        return float(obj.lectura_inicial)
 
 
 # --- SERIALIZERS DE ENTRADA (Mantenemos tu lógica limpia aquí) ---

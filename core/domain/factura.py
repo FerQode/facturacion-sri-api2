@@ -7,7 +7,7 @@ from typing import Optional, List
 from core.shared.enums import EstadoFactura
 from core.domain.lectura import Lectura
 
-# --- CONSTANTES DE NEGOCIO (Junta de Agua) ---
+# --- CONSTANTES DE NEGOCIO ---
 TARIFA_BASE_M3: int = 120
 TARIFA_BASE_PRECIO: Decimal = Decimal("3.00")
 TARIFA_EXCEDENTE_PRECIO: Decimal = Decimal("0.50")
@@ -48,44 +48,44 @@ class Factura:
     sri_tipo_emision: int = 1 # 1: Normal
     sri_clave_acceso: Optional[str] = None
     sri_fecha_autorizacion: Optional[datetime] = None
-    sri_xml_autorizado: Optional[str] = None # Guardaremos el XML completo aquí
+    sri_xml_autorizado: Optional[str] = None
     sri_mensaje_error: Optional[str] = None
-
-    # --- ¡CAMPO AGREGADO! (La pieza que faltaba) ---
     estado_sri: Optional[str] = None 
-    # -----------------------------------------------
 
-    # --- LÓGICA DE NEGOCIO ---
+    # --- LÓGICA DE NEGOCIO (CORREGIDA) ---
     
     def calcular_total_con_medidor(self, consumo_m3: int):
         self.detalles.clear()
         
         if consumo_m3 <= TARIFA_BASE_M3:
+            # CASO A: Consumo dentro de la base (Tarifa Plana)
+            # Se cobra 1 unidad de servicio, independientemente del volumen exacto
             self.detalles.append(DetalleFactura(
                 id=None,
-                concepto=f"Consumo base hasta {TARIFA_BASE_M3} m³",
-                cantidad=Decimal(consumo_m3),
-                precio_unitario=TARIFA_BASE_PRECIO / Decimal(TARIFA_BASE_M3 if TARIFA_BASE_M3 > 0 else 1),
+                concepto=f"Servicio de Agua Potable (Base hasta {TARIFA_BASE_M3} m³)",
+                cantidad=Decimal(1), 
+                precio_unitario=TARIFA_BASE_PRECIO,
                 subtotal=TARIFA_BASE_PRECIO
             ))
             self.subtotal = TARIFA_BASE_PRECIO
         else:
+            # CASO B: Consumo Excedente
             consumo_excedente = consumo_m3 - TARIFA_BASE_M3
             
-            # 1. Base
+            # 1. Cobro la base completa como 1 unidad
             self.detalles.append(DetalleFactura(
                 id=None,
-                concepto=f"Consumo base ({TARIFA_BASE_M3} m³)",
-                cantidad=Decimal(TARIFA_BASE_M3),
-                precio_unitario=TARIFA_BASE_PRECIO / Decimal(TARIFA_BASE_M3),
+                concepto=f"Servicio Base ({TARIFA_BASE_M3} m³)",
+                cantidad=Decimal(1),
+                precio_unitario=TARIFA_BASE_PRECIO,
                 subtotal=TARIFA_BASE_PRECIO
             ))
             
-            # 2. Excedente
+            # 2. Cobro el excedente por metro cúbico
             subtotal_excedente = Decimal(consumo_excedente) * TARIFA_EXCEDENTE_PRECIO
             self.detalles.append(DetalleFactura(
                 id=None,
-                concepto=f"Consumo excedente ({consumo_excedente} m³)",
+                concepto=f"Consumo Excedente ({consumo_excedente} m³)",
                 cantidad=Decimal(consumo_excedente),
                 precio_unitario=TARIFA_EXCEDENTE_PRECIO,
                 subtotal=subtotal_excedente
@@ -105,6 +105,20 @@ class Factura:
             subtotal=TARIFA_FIJA_SIN_MEDIDOR
         ))
         self.subtotal = TARIFA_FIJA_SIN_MEDIDOR
+        self.total = self.subtotal + self.impuestos
+
+    def agregar_multa(self, concepto: str, valor: Decimal):
+        """
+        Método para inyectar multas desde el Servicio de Facturación.
+        """
+        self.detalles.append(DetalleFactura(
+            id=None,
+            concepto=f"MULTA: {concepto}",
+            cantidad=Decimal(1),
+            precio_unitario=valor,
+            subtotal=valor
+        ))
+        self.subtotal += valor
         self.total = self.subtotal + self.impuestos
 
     def marcar_como_pagada(self):

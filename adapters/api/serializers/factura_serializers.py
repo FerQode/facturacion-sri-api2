@@ -1,52 +1,86 @@
 # adapters/api/serializers/factura_serializers.py
-
 from rest_framework import serializers
 from datetime import date, timedelta
-from core.shared.enums import EstadoFactura
+from core.shared.enums import EstadoFactura, MetodoPagoEnum
+
+# =============================================================================
+# 1. SERIALIZERS DE ENTRADA (VALIDACIÓN DE SOLICITUDES)
+# =============================================================================
 
 class GenerarFacturaSerializer(serializers.Serializer):
     """
-    Valida el JSON de entrada para el Caso de Uso GenerarFacturaDesdeLecturaUseCase.
-    Actúa como el "portero" (gatekeeper) de la API, asegurando que los
-    datos sean correctos antes de pasarlos al "cerebro" (core).
+    Valida el JSON para generar una factura individual desde una lectura.
     """
-    # 1. Campos Requeridos
-    # El ID de la lectura que vamos a facturar
     lectura_id = serializers.IntegerField(required=True)
-    # La fecha en que se emite la factura
     fecha_emision = serializers.DateField(required=True)
-    
-    # 2. Campo Opcional (Buena Práctica)
-    # Permitimos que el frontend envíe una fecha de vencimiento,
-    # pero si no lo hace, la calcularemos nosotros.
     fecha_vencimiento = serializers.DateField(required=False)
 
     def validate(self, data):
-        """
-        Método de validación de DRF para reglas de negocio complejas
-        que involucran múltiples campos.
-        """
-        # 3. Lógica de Negocio en el "Portero"
-        # Si no nos envían fecha de vencimiento, le asignamos 30 días por defecto.
+        # Lógica de negocio básica: Si no hay vencimiento, damos 30 días
         if 'fecha_vencimiento' not in data:
             data['fecha_vencimiento'] = data['fecha_emision'] + timedelta(days=30)
         
-        # 4. Regla de Validación
-        # Nos aseguramos de que la factura no venza antes de ser emitida.
         if data['fecha_vencimiento'] < data['fecha_emision']:
-            # Esta excepción se convierte automáticamente en un error HTTP 400
             raise serializers.ValidationError(
                 "La fecha de vencimiento no puede ser anterior a la fecha de emisión."
             )
-            
-        # 5. Devolvemos los datos limpios y validados
-        # Estos datos (data) son los que se pasarán al DTO del Caso de Uso.
         return data
-    
-    # --- AÑADIR ESTA NUEVA CLASE AL FINAL ---
+
+class EnviarFacturaSRISerializer(serializers.Serializer):
+    """
+    Valida la solicitud para re-enviar una factura al SRI.
+    """
+    factura_id = serializers.IntegerField(required=True)
+
+class ConsultarAutorizacionSerializer(serializers.Serializer):
+    """
+    Valida la consulta de estado mediante clave de acceso (49 dígitos).
+    """
+    clave_acceso = serializers.CharField(
+        required=True,
+        min_length=49,
+        max_length=49
+    )
+
+class EmisionMasivaSerializer(serializers.Serializer):
+    """
+    Valida los parámetros para facturación masiva.
+    """
+    mes = serializers.IntegerField(min_value=1, max_value=12)
+    anio = serializers.IntegerField(min_value=2020)
+    usuario_id = serializers.IntegerField(required=False)
+
+# --- ✅ NUEVOS SERIALIZERS PARA COBROS ---
+
+class DetallePagoSerializer(serializers.Serializer):
+    """
+    Estructura de un abono individual (ej: $5.00 en Efectivo).
+    """
+    # Convertimos el Enum a opciones válidas
+    metodo = serializers.ChoiceField(choices=[(tag.name, tag.value) for tag in MetodoPagoEnum])
+    monto = serializers.DecimalField(max_digits=10, decimal_places=2)
+    referencia = serializers.CharField(
+        required=False, 
+        allow_blank=True, 
+        help_text="Número de comprobante (Obligatorio para Transferencia)"
+    )
+    observacion = serializers.CharField(required=False, allow_blank=True)
+
+class RegistrarCobroSerializer(serializers.Serializer):
+    """
+    Valida la recepción de pagos mixtos para una factura.
+    """
+    factura_id = serializers.IntegerField()
+    # Una lista de pagos (pueden ser varios métodos a la vez)
+    pagos = DetallePagoSerializer(many=True, allow_empty=False)
+
+
+# =============================================================================
+# 2. SERIALIZERS DE SALIDA (RESPUESTA AL FRONTEND)
+# =============================================================================
 
 class DetalleFacturaSerializer(serializers.Serializer):
-    """Serializa los ítems dentro de la factura para el Frontend"""
+    """Serializa los ítems dentro de la factura (líneas de detalle)"""
     concepto = serializers.CharField()
     cantidad = serializers.DecimalField(max_digits=10, decimal_places=2)
     precio_unitario = serializers.DecimalField(max_digits=10, decimal_places=4)
@@ -54,8 +88,7 @@ class DetalleFacturaSerializer(serializers.Serializer):
 
 class FacturaResponseSerializer(serializers.Serializer):
     """
-    Este es el JSON FINAL que recibe el Frontend.
-    Mapea la Entidad de Dominio a JSON.
+    JSON FINAL que recibe el Frontend con los datos de la factura generada.
     """
     id = serializers.IntegerField()
     socio_id = serializers.IntegerField()
@@ -68,29 +101,15 @@ class FacturaResponseSerializer(serializers.Serializer):
     impuestos = serializers.DecimalField(max_digits=10, decimal_places=2)
     total = serializers.DecimalField(max_digits=10, decimal_places=2)
     
-    # Datos SRI (Para mostrar alertas en el Frontend)
-    sri_estado = serializers.CharField(source='estado_sri', allow_null=True, required=False) # Mapeamos atributos opcionales
-    sri_mensaje = serializers.CharField(source='mensaje_sri', allow_null=True, required=False)
+    # Datos SRI (Mapeo seguro)
+    # 1. sri_estado != estado_sri -> REQUIERE source
+    sri_estado = serializers.CharField(source='estado_sri', allow_null=True, required=False)
+    
+    # 2. sri_mensaje != sri_mensaje_error -> REQUIERE source
+    sri_mensaje = serializers.CharField(source='sri_mensaje_error', allow_null=True, required=False)
+    
+    # 3. sri_clave_acceso == sri_clave_acceso -> ❌ CORREGIDO: SE QUITÓ SOURCE
     sri_clave_acceso = serializers.CharField(allow_null=True, required=False)
 
-    # Detalles (Nested)
+    # Detalles anidados
     detalles = DetalleFacturaSerializer(many=True)
-class EnviarFacturaSRISerializer(serializers.Serializer):
-    """
-    Valida el JSON de entrada para el Caso de Uso EnviarFacturaSRIUseCase.
-    Solo necesita el ID de la factura que ya existe.
-    """
-    factura_id = serializers.IntegerField(required=True)
-
-# --- SERIALIZER NUEVO A AÑADIR ---
-
-class ConsultarAutorizacionSerializer(serializers.Serializer):
-    """
-    Valida el JSON de entrada para el Caso de Uso ConsultarAutorizacionUseCase.
-    Valida que la clave de acceso tenga la longitud correcta.
-    """
-    clave_acceso = serializers.CharField(
-        required=True,
-        min_length=49,
-        max_length=49
-    )

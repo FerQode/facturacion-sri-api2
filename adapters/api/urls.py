@@ -4,10 +4,9 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 # --- Importación de Vistas (Clean Architecture) ---
-# Importamos los controladores (views) que conectan HTTP con los Casos de Uso.
 from .views import (
     lectura_views,
-    factura_views,
+    factura_views, # Aquí están las clases nuevas (FacturaMasivaViewSet, CobroViewSet)
     socio_views,
     medidor_views,
     barrio_views,
@@ -15,10 +14,8 @@ from .views import (
 )
 
 # ==============================================================================
-# A. ROUTER PARA CRUDs (ViewSets)
+# A. ROUTER PARA CRUDs y VIEWSETS
 # ==============================================================================
-# El DefaultRouter crea automáticamente las rutas estándar REST:
-# GET /recurso/, POST /recurso/, GET /recurso/{id}/, PUT /recurso/{id}/
 router = DefaultRouter()
 
 # 1. Gestión de Personas
@@ -29,44 +26,52 @@ router.register(r'medidores', medidor_views.MedidorViewSet, basename='medidor')
 router.register(r'barrios', barrio_views.BarrioViewSet, basename='barrio')
 router.register(r'terrenos', terreno_views.TerrenoViewSet, basename='terreno')
 
-# 3. Gestión de Lecturas (NUEVO: Incluye Historial y Registro)
-# Genera:
-# POST /api/v1/lecturas/ (Registrar)
-# GET /api/v1/lecturas/?medidor_id=X (Historial)
+# 3. Gestión de Lecturas
 router.register(r'lecturas', lectura_views.LecturaViewSet, basename='lectura')
 
+# 4. ✅ NUEVO: Facturación Masiva y Pre-visualización
+# Genera rutas automáticas para las @actions definidas:
+# GET /api/v1/facturas-gestion/pendientes/ (Pre-visualización)
+# POST /api/v1/facturas-gestion/emision-masiva/ (Generar)
+router.register(r'facturas-gestion', factura_views.FacturaMasivaViewSet, basename='facturas-gestion')
+
+# 5. ✅ NUEVO: Cobros y Pagos
+# Genera: POST /api/v1/cobros/registrar/
+router.register(r'cobros', factura_views.CobroViewSet, basename='cobros')
+
 
 # ==============================================================================
-# B. RUTAS TRANSACCIONALES (APIViews)
+# B. RUTAS MANUALES (APIViews)
 # ==============================================================================
-# Estas rutas ejecutan "Casos de Uso" complejos que no encajan en un CRUD simple.
-# Se definen manualmente con 'path' para tener control total de la URL.
 
 urlpatterns = [
     
-    # --- Módulo de Facturación & SRI ---
-    # 1. Generar: Toma una lectura, calcula montos, firma XML y envía al SRI.
+    # --- Módulo de Facturación Individual & SRI ---
     path(
         'facturas/generar/', 
         factura_views.GenerarFacturaAPIView.as_view(), 
         name='generar-factura'
     ),
     
-    # 2. Reenviar: Si falló el envío automático, se reintenta por aquí.
     path(
         'facturas/enviar-sri/', 
         factura_views.EnviarFacturaSRIAPIView.as_view(), 
         name='enviar-factura-sri'
     ),
     
-    # 3. Consultar: Verifica el estado de una autorización usando la clave de acceso.
     path(
         'facturas/consultar/', 
         factura_views.ConsultarAutorizacionAPIView.as_view(), 
         name='consultar-autorizacion-sri'
     ),
+
+    # App Móvil (Historial)
+    path(
+        'mis-facturas/',
+        factura_views.MisFacturasAPIView.as_view(),
+        name='mis-facturas'
+    ),
     
     # --- Inclusión de las Rutas Automáticas del Router ---
-    # Se pone al final para que capture todas las rutas generadas arriba.
     path('', include(router.urls)),
 ]

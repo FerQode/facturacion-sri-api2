@@ -1,99 +1,121 @@
 from typing import List, Optional
-from core.interfaces.repositories import ISocioRepository
 from core.domain.socio import Socio
-from adapters.infrastructure.models.socio_model import SocioModel
-from core.shared.enums import RolUsuario
+from core.interfaces.repositories import ISocioRepository
+from adapters.infrastructure.models import SocioModel
+
+# Manejo robusto de Enums para evitar errores de importación
+try:
+    from core.shared.enums import RolUsuario
+except ImportError:
+    RolUsuario = None
 
 class DjangoSocioRepository(ISocioRepository):
     """
-    Implementación del Repositorio de Socios usando el ORM de Django.
-    Actualizado para manejar barrio_id (FK) y direccion.
+    Implementación del repositorio de Socios usando el ORM de Django.
+    Cumple estrictamente con el contrato de ISocioRepository.
     """
 
-    def _to_entity(self, model: SocioModel) -> Socio:
-        """Mapeador: Modelo de Django -> Entidad de Dominio"""
+    # =================================================================
+    # 1. TRADUCTOR (ORM -> DOMINIO)
+    # =================================================================
+    def _map_model_to_domain(self, model: SocioModel) -> Socio:
+        """
+        Convierte un SocioModel (Django) a Socio (Dominio).
+        """
+        # Lógica defensiva para el Rol
+        rol_valor = "SOCIO"
+        if hasattr(model, 'rol') and model.rol:
+            rol_valor = model.rol
+            if RolUsuario:
+                try:
+                    rol_valor = RolUsuario(model.rol)
+                except ValueError:
+                    pass
+
         return Socio(
             id=model.id,
-            usuario_id=model.usuario.id if model.usuario else None,
             cedula=model.cedula,
             nombres=model.nombres,
             apellidos=model.apellidos,
             email=model.email,
             telefono=model.telefono,
-            
-            # --- ACTUALIZACIÓN CRÍTICA ---
-            # Mapeamos la Foreign Key correctamente
-            barrio_id=model.barrio_id if model.barrio_id else None,
-            direccion=model.direccion, 
-            # -----------------------------
-            
-            # Convertimos el string de la BD al Enum del Dominio
-            rol=RolUsuario(model.rol) if model.rol else None,
-            esta_activo=model.esta_activo
+            barrio_id=model.barrio_id,
+            direccion=model.direccion,
+            esta_activo=getattr(model, 'esta_activo', True),
+            rol=rol_valor,
+            # Mapeo seguro del usuario de sistema
+            usuario_id=model.usuario_id if hasattr(model, 'usuario') and model.usuario else None
         )
 
+    # =================================================================
+    # 2. IMPLEMENTACIÓN DE LA INTERFAZ (LECTURA)
+    # =================================================================
     def get_by_id(self, socio_id: int) -> Optional[Socio]:
         try:
+            # select_related optimiza trayendo la relación 'usuario' en una sola query
             model = SocioModel.objects.select_related('usuario').get(pk=socio_id)
-            return self._to_entity(model)
-        except SocioModel.DoesNotExist:
-            return None
-
-    def get_by_usuario_id(self, usuario_id: int) -> Optional[Socio]:
-        try:
-            model = SocioModel.objects.select_related('usuario').get(usuario_id=usuario_id)
-            return self._to_entity(model)
+            return self._map_model_to_domain(model)
         except SocioModel.DoesNotExist:
             return None
 
     def get_by_cedula(self, cedula: str) -> Optional[Socio]:
         try:
-            model = SocioModel.objects.get(cedula=cedula)
-            return self._to_entity(model)
+            model = SocioModel.objects.select_related('usuario').get(cedula=cedula)
+            return self._map_model_to_domain(model)
+        except SocioModel.DoesNotExist:
+            return None
+
+    # ✅ ESTE ES EL MÉTODO QUE FALTABA Y CAUSABA EL ERROR DE ARRANQUE
+    def get_by_usuario_id(self, usuario_id: int) -> Optional[Socio]:
+        """
+        Busca un socio basándose en su ID de usuario de sistema (Login).
+        Requerido por ISocioRepository.
+        """
+        try:
+            model = SocioModel.objects.select_related('usuario').get(usuario_id=usuario_id)
+            return self._map_model_to_domain(model)
         except SocioModel.DoesNotExist:
             return None
 
     def list_all(self) -> List[Socio]:
-        models = SocioModel.objects.select_related('usuario').all()
-        return [self._to_entity(model) for model in models]
+        qs = SocioModel.objects.select_related('usuario').all().order_by('apellidos')
+        return [self._map_model_to_domain(m) for m in qs]
+
+    # =================================================================
+    # 3. IMPLEMENTACIÓN DE LA INTERFAZ (ESCRITURA)
+    # =================================================================
+    def create(self, socio: Socio) -> Socio:
+        """Alias para cumplir con interfaces que pidan create explícito"""
+        return self.save(socio)
 
     def save(self, socio: Socio) -> Socio:
-        """
-        Guarda (Create) o Actualiza (Update) un socio en la base de datos.
-        """
+        # Preparamos los datos
+        data_db = {
+            'cedula': socio.cedula,
+            'nombres': socio.nombres,
+            'apellidos': socio.apellidos,
+            'email': socio.email,
+            'telefono': socio.telefono,
+            'barrio_id': socio.barrio_id,
+            'direccion': socio.direccion,
+            'esta_activo': socio.esta_activo,
+            'usuario_id': socio.usuario_id
+        }
+        
+        # Convertimos el Enum a string para la BD
+        if hasattr(socio, 'rol') and socio.rol:
+            val = socio.rol.value if hasattr(socio.rol, 'value') else str(socio.rol)
+            data_db['rol'] = val
+
+        # Lógica segura de guardado
         if socio.id:
-            try:
-                # Intentamos obtener el existente
-                model = SocioModel.objects.get(pk=socio.id)
-            except SocioModel.DoesNotExist:
-                # Si viene con ID pero no existe, creamos uno nuevo
-                model = SocioModel()
+            # Update
+            SocioModel.objects.filter(pk=socio.id).update(**data_db)
+            # Recargamos para devolver el objeto fresco
+            model = SocioModel.objects.get(pk=socio.id)
         else:
-            # Si no tiene ID, es nuevo
-            model = SocioModel()
-
-        # Mapeamos datos de la Entidad -> Modelo de Django
-        model.cedula = socio.cedula
-        model.nombres = socio.nombres
-        model.apellidos = socio.apellidos
-        model.email = socio.email
-        model.telefono = socio.telefono
-        
-        # --- MAPEO DE NUEVOS CAMPOS ---
-        model.barrio_id = socio.barrio_id  # Django asigna la FK por el ID
-        model.direccion = socio.direccion
-        # ------------------------------
-        
-        model.esta_activo = socio.esta_activo
-        
-        if socio.rol:
-            model.rol = socio.rol.value # Guardamos el valor string del Enum
+            # Create
+            model = SocioModel.objects.create(**data_db)
+            socio.id = model.id
             
-        if socio.usuario_id:
-            model.usuario_id = socio.usuario_id
-
-        # Guardamos en BD
-        model.save()
-        
-        # Retornamos la entidad actualizada (con el ID generado si era nuevo)
-        return self._to_entity(model)
+        return self._map_model_to_domain(model)
