@@ -10,6 +10,7 @@ from core.domain.lectura import Lectura
 from core.domain.factura import Factura
 from core.domain.barrio import Barrio 
 from core.domain.terreno import Terreno
+from core.domain.multa import Multa  # ✅ IMPORTANTE: Agregada esta línea
 from core.shared.enums import EstadoFactura, RolUsuario
 
 """
@@ -181,6 +182,37 @@ class IFacturaRepository(ABC):
     @abstractmethod
     def save(self, factura: Factura) -> Factura:
         """Crea o actualiza una factura y sus detalles."""
+        pass
+
+    @abstractmethod
+    def obtener_pendientes_por_socio(self, socio_id: int) -> List[Factura]:
+        """Obtiene las facturas pendientes de pago para un socio específico."""
+        pass
+
+
+# ✅ NUEVA CLASE ABSTRACTA (Soluciona el ImportError)
+class IMultaRepository(ABC):
+    """
+    Define el contrato para la gestión de Multas.
+    """
+    @abstractmethod
+    def get_by_id(self, multa_id: int) -> Optional[Multa]:
+        """Obtiene una multa por su ID."""
+        pass
+
+    @abstractmethod
+    def save(self, multa: Multa) -> Multa:
+        """Guarda (crea o actualiza) una multa en la base de datos."""
+        pass
+
+    @abstractmethod
+    def list_all(self) -> List[Multa]:
+        """Lista todas las multas en el sistema."""
+        pass
+
+    @abstractmethod
+    def obtener_pendientes_por_socio(self, socio_id: int) -> List[Multa]:
+        """Obtiene las multas pendientes de pago para un socio específico."""
         pass
 
 

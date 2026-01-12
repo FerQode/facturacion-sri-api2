@@ -1,4 +1,5 @@
 # core/use_cases/socio_dtos.py
+
 from dataclasses import dataclass
 from typing import Optional
 from core.shared.enums import RolUsuario
@@ -15,14 +16,17 @@ class SocioDTO:
     email: Optional[str]
     telefono: Optional[str]
     
-    # --- ACTUALIZADO FASE 3/4 ---
-    # Antes: barrio: str
-    barrio_id: Optional[int]    # Devolvemos el ID para que el frontend preseleccione el dropdown
-    direccion: Optional[str]    # La dirección específica (calle, lote, etc.)
-    # ----------------------------
+    # --- UBICACIÓN ---
+    barrio_id: Optional[int]    # ID para preseleccionar dropdown en frontend
+    direccion: Optional[str]    # Dirección específica
+    # -----------------
     
     rol: str 
     esta_activo: bool
+    
+    # ✅ NUEVO CAMPO (Soluciona el TypeError)
+    # Permite al frontend saber qué ID de usuario (login) tiene asociado este socio
+    usuario_id: Optional[int] = None 
 
 # =============================================================================
 # 2. DTO DE ENTRADA (Creación)
@@ -33,16 +37,16 @@ class CrearSocioDTO:
     nombres: str
     apellidos: str
     
-    # --- ACTUALIZADO ---
-    barrio_id: int      # El Frontend debe enviar el ID del barrio seleccionado
-    direccion: str      # Obligatorio para una junta de agua
-    # -------------------
+    # --- UBICACIÓN ---
+    barrio_id: int      # Obligatorio
+    direccion: str      # Obligatorio
+    # -----------------
     
     rol: RolUsuario 
     email: Optional[str] = None
     telefono: Optional[str] = None
     
-    # Credenciales opcionales
+    # Credenciales opcionales (si no se envían, se usa la cédula)
     username: Optional[str] = None 
     password: Optional[str] = None 
 
@@ -54,10 +58,10 @@ class ActualizarSocioDTO:
     nombres: Optional[str] = None
     apellidos: Optional[str] = None
     
-    # --- ACTUALIZADO ---
+    # --- UBICACIÓN ---
     barrio_id: Optional[int] = None
     direccion: Optional[str] = None
-    # -------------------
+    # -----------------
     
     rol: Optional[RolUsuario] = None
     email: Optional[str] = None

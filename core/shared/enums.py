@@ -26,3 +26,8 @@ class CodigoSRIEnum(Enum):
     # Tabla 24 del SRI (Formas de Pago)
     SIN_UTILIZACION_SISTEMA_FINANCIERO = "01" # Efectivo
     OTROS_CON_UTILIZACION_SISTEMA_FINANCIERO = "20" # Transferencias
+
+class EstadoMulta(Enum):
+    PENDIENTE = "PENDIENTE"
+    PAGADA = "PAGADA"
+    ANULADA = "ANULADA"

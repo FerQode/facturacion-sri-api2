@@ -1,7 +1,8 @@
-# adapters/api/views/barrio_views.py
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from drf_yasg.utils import swagger_auto_schema # ✅ Importamos Swagger
+from drf_yasg import openapi
 
 # Repositorio (Infraestructura)
 from adapters.infrastructure.repositories.django_barrio_repository import DjangoBarrioRepository
@@ -18,32 +19,28 @@ from core.use_cases.barrio_uc import (
 )
 from core.use_cases.barrio_dtos import CrearBarrioDTO, ActualizarBarrioDTO
 
-# Excepciones de Negocio
-from core.shared.exceptions import ValidacionError, BaseExcepcionDeNegocio
-
-# Si tienes una excepción específica para Barrio, impórtala también. 
-# Si la definiste dentro de barrio_uc.py, impórtala desde ahí:
+# Excepciones
+from core.shared.exceptions import ValidacionError
 from core.use_cases.barrio_uc import BarrioNoEncontradoError
 
 class BarrioViewSet(viewsets.ViewSet):
     """
-    ViewSet para la gestión CRUD de Barrios.
+    ViewSet para la gestión de Barrios.
     """
 
     def get_permissions(self):
-        """
-        Permisos diferenciados por acción:
-        - Listar/Ver: Cualquier usuario autenticado.
-        - Crear/Editar/Borrar: Solo Administradores.
-        """
         if self.action in ['list', 'retrieve']:
             permission_classes = [IsAuthenticated]
         else:
             permission_classes = [IsAdminUser]
         return [permission() for permission in permission_classes]
 
+    # ✅ DOCUMENTACIÓN VISUAL PARA EL FRONTEND
+    @swagger_auto_schema(
+        operation_summary="Listar todos los barrios",
+        responses={200: BarrioSerializer(many=True)}
+    )
     def list(self, request):
-        """ GET /api/v1/barrios/ """
         repo = DjangoBarrioRepository()
         use_case = ListarBarriosUseCase(repo)
         
@@ -52,8 +49,11 @@ class BarrioViewSet(viewsets.ViewSet):
         serializer = BarrioSerializer(dtos, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @swagger_auto_schema(
+        operation_summary="Obtener un barrio por ID",
+        responses={200: BarrioSerializer(), 404: "No encontrado"}
+    )
     def retrieve(self, request, pk=None):
-        """ GET /api/v1/barrios/<pk>/ """
         repo = DjangoBarrioRepository()
         use_case = ObtenerBarrioUseCase(repo)
         
@@ -63,8 +63,12 @@ class BarrioViewSet(viewsets.ViewSet):
         except BarrioNoEncontradoError as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
 
+    @swagger_auto_schema(
+        operation_summary="Crear un nuevo barrio",
+        request_body=CrearBarrioSerializer,
+        responses={201: BarrioSerializer(), 400: "Error de validación"}
+    )
     def create(self, request):
-        """ POST /api/v1/barrios/ """
         serializer = CrearBarrioSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -80,11 +84,14 @@ class BarrioViewSet(viewsets.ViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     def update(self, request, pk=None):
-        """ PUT /api/v1/barrios/<pk>/ """
         return self.partial_update(request, pk)
 
+    @swagger_auto_schema(
+        operation_summary="Actualizar un barrio",
+        request_body=ActualizarBarrioSerializer,
+        responses={200: BarrioSerializer(), 404: "No encontrado"}
+    )
     def partial_update(self, request, pk=None):
-        """ PATCH /api/v1/barrios/<pk>/ """
         serializer = ActualizarBarrioSerializer(data=request.data, partial=True)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -101,8 +108,11 @@ class BarrioViewSet(viewsets.ViewSet):
         except ValidacionError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    @swagger_auto_schema(
+        operation_summary="Eliminar un barrio",
+        responses={204: "Eliminado correctamente", 404: "No encontrado"}
+    )
     def destroy(self, request, pk=None):
-        """ DELETE /api/v1/barrios/<pk>/ """
         repo = DjangoBarrioRepository()
         use_case = EliminarBarrioUseCase(repo)
         

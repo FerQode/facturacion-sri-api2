@@ -5,8 +5,20 @@ from core.interfaces.repositories import ISocioRepository, IAuthRepository
 from core.use_cases.socio_dtos import SocioDTO, CrearSocioDTO, ActualizarSocioDTO
 from core.shared.exceptions import SocioNoEncontradoError, ValidacionError
 
-# Función helper para traducir Entidad -> DTO
+# =============================================================================
+# HELPER: MAPPER ROBUSTO (La clave para evitar errores 500)
+# =============================================================================
 def _map_socio_to_dto(socio: Socio) -> SocioDTO:
+    """
+    Convierte la Entidad de Dominio a DTO para enviar al Frontend.
+    Maneja con seguridad el campo 'rol' para evitar AttributeError.
+    """
+    # 1. Lógica segura para el Rol
+    rol_valor = None
+    if socio.rol:
+        # Si es un objeto Enum, sacamos .value. Si ya es texto, lo usamos directo.
+        rol_valor = socio.rol.value if hasattr(socio.rol, 'value') else str(socio.rol)
+
     return SocioDTO(
         id=socio.id,
         cedula=socio.cedula,
@@ -15,14 +27,19 @@ def _map_socio_to_dto(socio: Socio) -> SocioDTO:
         email=socio.email,
         telefono=socio.telefono,
         
-        # --- CORRECCIÓN: Usamos barrio_id ---
+        # --- Campos de Ubicación ---
         barrio_id=socio.barrio_id, 
-        direccion=socio.direccion, # Agregamos dirección si el DTO lo soporta
-        # ------------------------------------
+        direccion=socio.direccion,
+        # ---------------------------
         
-        rol=socio.rol.value if socio.rol else None,
-        esta_activo=socio.esta_activo
+        rol=rol_valor,  # ✅ CORREGIDO: Usamos la variable segura
+        esta_activo=socio.esta_activo,
+        usuario_id=socio.usuario_id
     )
+
+# =============================================================================
+# CASOS DE USO
+# =============================================================================
 
 class ListarSociosUseCase:
     def __init__(self, socio_repo: ISocioRepository):
@@ -30,6 +47,7 @@ class ListarSociosUseCase:
 
     def execute(self) -> List[SocioDTO]:
         socios = self.socio_repo.list_all()
+        # Mapeamos cada entidad usando el helper seguro
         return [_map_socio_to_dto(socio) for socio in socios]
 
 class ObtenerSocioUseCase:
@@ -74,10 +92,9 @@ class CrearSocioUseCase:
             nombres=input_dto.nombres,
             apellidos=input_dto.apellidos,
             
-            # --- CORRECCIÓN: Mapeamos barrio_id ---
-            barrio_id=input_dto.barrio_id, # El DTO debe traer este campo int
+            # Ubicación
+            barrio_id=input_dto.barrio_id,
             direccion=input_dto.direccion,
-            # --------------------------------------
             
             rol=input_dto.rol,
             email=input_dto.email,
@@ -104,20 +121,20 @@ class ActualizarSocioUseCase:
         if input_dto.nombres is not None: socio_entidad.nombres = input_dto.nombres
         if input_dto.apellidos is not None: socio_entidad.apellidos = input_dto.apellidos
         
-        # --- CORRECCIÓN: barrio_id ---
         if input_dto.barrio_id is not None: socio_entidad.barrio_id = input_dto.barrio_id
         if input_dto.direccion is not None: socio_entidad.direccion = input_dto.direccion
-        # -----------------------------
 
         if input_dto.rol is not None: socio_entidad.rol = input_dto.rol
         if input_dto.email is not None: socio_entidad.email = input_dto.email
         if input_dto.telefono is not None: socio_entidad.telefono = input_dto.telefono
         
-        # 3. Lógica de Reactivación/Desactivación
+        # 3. Lógica de Reactivación/Desactivación de cuenta de usuario
         if input_dto.esta_activo is not None:
+            # Si se está activando y estaba inactivo
             if input_dto.esta_activo and not socio_entidad.esta_activo:
                 if socio_entidad.usuario_id:
                     self.auth_repo.activar_usuario(socio_entidad.usuario_id)
+            # Si se está desactivando y estaba activo
             elif not input_dto.esta_activo and socio_entidad.esta_activo:
                 if socio_entidad.usuario_id:
                     self.auth_repo.desactivar_usuario(socio_entidad.usuario_id)
@@ -138,9 +155,10 @@ class EliminarSocioUseCase:
         if not socio:
             raise SocioNoEncontradoError(f"Socio con id {socio_id} no encontrado.")
         
-        # Soft Delete
+        # Soft Delete (Borrado Lógico)
         socio.esta_activo = False
         self.socio_repo.save(socio)
         
+        # Desactivar acceso al sistema
         if socio.usuario_id:
             self.auth_repo.desactivar_usuario(socio.usuario_id)

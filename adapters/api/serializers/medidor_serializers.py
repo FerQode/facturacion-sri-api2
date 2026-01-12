@@ -1,7 +1,7 @@
 # adapters/api/serializers/medidor_serializers.py
 
 from rest_framework import serializers
-# ✅ Importamos LecturaModel para poder consultar el historial
+# ✅ IMPORTANTE: Agregamos LecturaModel a los imports para consultar historial
 from adapters.infrastructure.models import MedidorModel, TerrenoModel, LecturaModel
 
 class MedidorSerializer(serializers.ModelSerializer):
@@ -13,7 +13,7 @@ class MedidorSerializer(serializers.ModelSerializer):
     nombre_socio = serializers.SerializerMethodField()
     direccion_terreno = serializers.SerializerMethodField()
     
-    # ✅ Campo calculado: Última lectura (vital para validar la nueva lectura en frontend)
+    # ✅ Campo calculado: Última lectura (VITAL para validar en frontend)
     lectura_anterior = serializers.SerializerMethodField()
 
     # Mapeamos terreno_id explícitamente por si viene del DTO como entero simple
@@ -77,7 +77,7 @@ class MedidorSerializer(serializers.ModelSerializer):
             return terreno.direccion
         return "En Inventario / Bodega"
 
-    # ✅ LÓGICA DE TU COMPAÑERO (CORRECTA)
+    # ✅ LÓGICA DE TU COMPAÑERO (CORRECTA E INTEGRADA)
     def get_lectura_anterior(self, obj):
         """
         Busca la última lectura registrada para este medidor.

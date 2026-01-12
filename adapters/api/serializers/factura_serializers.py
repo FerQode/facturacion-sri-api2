@@ -50,13 +50,12 @@ class EmisionMasivaSerializer(serializers.Serializer):
     anio = serializers.IntegerField(min_value=2020)
     usuario_id = serializers.IntegerField(required=False)
 
-# --- ✅ NUEVOS SERIALIZERS PARA COBROS ---
+# --- SERIALIZERS PARA COBROS ---
 
 class DetallePagoSerializer(serializers.Serializer):
     """
     Estructura de un abono individual (ej: $5.00 en Efectivo).
     """
-    # Convertimos el Enum a opciones válidas
     metodo = serializers.ChoiceField(choices=[(tag.name, tag.value) for tag in MetodoPagoEnum])
     monto = serializers.DecimalField(max_digits=10, decimal_places=2)
     referencia = serializers.CharField(
@@ -71,7 +70,6 @@ class RegistrarCobroSerializer(serializers.Serializer):
     Valida la recepción de pagos mixtos para una factura.
     """
     factura_id = serializers.IntegerField()
-    # Una lista de pagos (pueden ser varios métodos a la vez)
     pagos = DetallePagoSerializer(many=True, allow_empty=False)
 
 
@@ -80,7 +78,7 @@ class RegistrarCobroSerializer(serializers.Serializer):
 # =============================================================================
 
 class DetalleFacturaSerializer(serializers.Serializer):
-    """Serializa los ítems dentro de la factura (líneas de detalle)"""
+    """Serializa los ítems dentro de la factura"""
     concepto = serializers.CharField()
     cantidad = serializers.DecimalField(max_digits=10, decimal_places=2)
     precio_unitario = serializers.DecimalField(max_digits=10, decimal_places=4)
@@ -101,15 +99,46 @@ class FacturaResponseSerializer(serializers.Serializer):
     impuestos = serializers.DecimalField(max_digits=10, decimal_places=2)
     total = serializers.DecimalField(max_digits=10, decimal_places=2)
     
-    # Datos SRI (Mapeo seguro)
-    # 1. sri_estado != estado_sri -> REQUIERE source
+    # Datos SRI
     sri_estado = serializers.CharField(source='estado_sri', allow_null=True, required=False)
-    
-    # 2. sri_mensaje != sri_mensaje_error -> REQUIERE source
     sri_mensaje = serializers.CharField(source='sri_mensaje_error', allow_null=True, required=False)
-    
-    # 3. sri_clave_acceso == sri_clave_acceso -> ❌ CORREGIDO: SE QUITÓ SOURCE
     sri_clave_acceso = serializers.CharField(allow_null=True, required=False)
 
     # Detalles anidados
     detalles = DetalleFacturaSerializer(many=True)
+
+# --- SERIALIZER DE PRE-VISUALIZACIÓN (CORREGIDO) ---
+
+class LecturaPendienteSerializer(serializers.Serializer):
+    """
+    Serializer para mostrar la pre-visualización de facturas (pendientes).
+    Ayuda al Frontend a saber qué campos mostrar en la tabla de 'Pendientes de Generar'.
+    """
+    # Identificadores
+    id = serializers.IntegerField(help_text="ID de la Lectura")
+    medidor_codigo = serializers.CharField(allow_null=True)
+    socio_nombre = serializers.CharField()
+    cedula = serializers.CharField()
+    
+    # ✅ CORREGIDO: Quitamos source='fecha' porque el dict de entrada ya trae 'fecha_lectura'
+    fecha_lectura = serializers.DateField() 
+
+    # Datos de Consumo
+    lectura_anterior = serializers.DecimalField(max_digits=10, decimal_places=2)
+    
+    # ✅ CORREGIDO: Quitamos source='valor' (Seguramente el dict ya trae 'lectura_actual')
+    lectura_actual = serializers.DecimalField(max_digits=10, decimal_places=2) 
+    
+    # ✅ CORREGIDO: Quitamos source='consumo_del_mes_m3' (El dict trae 'consumo')
+    consumo = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+    # Montos Calculados (Simulación)
+    monto_agua = serializers.DecimalField(max_digits=10, decimal_places=2)
+    multas_mingas = serializers.DecimalField(max_digits=10, decimal_places=2)
+    total_pagar = serializers.DecimalField(max_digits=10, decimal_places=2)
+    
+    detalle_multas = serializers.ListField(
+        child=serializers.CharField(), 
+        required=False, 
+        allow_empty=True
+    )

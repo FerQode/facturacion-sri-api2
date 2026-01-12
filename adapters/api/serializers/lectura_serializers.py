@@ -1,31 +1,58 @@
-# adapters/api/serializers/lectura_serializers.py
 from rest_framework import serializers
 from adapters.infrastructure.models import LecturaModel
 from core.use_cases.registrar_lectura_uc import RegistrarLecturaDTO
 
+# =============================================================================
+# 1. SERIALIZERS DE ENTRADA (Input)
+# =============================================================================
+
 class RegistrarLecturaSerializer(serializers.Serializer):
     """
-    Valida el JSON de ENTRADA para registrar una lectura.
+    Valida el JSON que envía Angular para registrar una lectura.
     """
     medidor_id = serializers.IntegerField(required=True)
-    lectura_actual = serializers.DecimalField(required=True, min_value=0, max_digits=12, decimal_places=2, source='lectura_actual_m3')
-    # Nota: Aceptamos 'lectura_actual_m3' o 'lectura_actual' en el JSON, 
-    # pero internamente lo mapeamos al DTO.
+    
+    # Estandarizamos al nombre que usa el Frontend: 'lectura_actual'
+    lectura_actual = serializers.DecimalField(
+        required=True, 
+        min_value=0, 
+        max_digits=12, 
+        decimal_places=2
+    )
+    
     fecha_lectura = serializers.DateField(required=True)
     observacion = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     def to_dto(self) -> RegistrarLecturaDTO:
+        """
+        Convierte la data validada en un DTO puro para el Caso de Uso.
+        """
         return RegistrarLecturaDTO(
             medidor_id=self.validated_data['medidor_id'],
-            valor=self.validated_data['lectura_actual_m3'], # DRF usa el source para el key interno
+            
+            # Mapeo: Frontend 'lectura_actual' -> Dominio 'valor'
+            valor=float(self.validated_data['lectura_actual']),
+            
+            fecha_lectura=self.validated_data['fecha_lectura'],
+            
+            # ✅ CORRECCIÓN CRÍTICA PROPUESTA POR FRONTEND
+            # Asignamos un operador por defecto (Admin) para evitar error de falta de ID.
+            # (En el futuro esto puede venir del request.user.id en la vista)
+            operador_id=1, 
+            
             observacion=self.validated_data.get('observacion')
         )
 
+# =============================================================================
+# 2. SERIALIZERS DE SALIDA (Response)
+# =============================================================================
+
 class LecturaResponseSerializer(serializers.ModelSerializer):
     """
-    Serializador de SALIDA para una lectura recién creada.
+    Respuesta simple al crear una lectura.
     """
     medidor_id = serializers.IntegerField()
+    # Mapeamos el nombre interno 'consumo_del_mes_m3' a 'consumo_del_mes' para el JSON
     consumo_del_mes = serializers.DecimalField(
         max_digits=12, decimal_places=2, read_only=True, source='consumo_del_mes_m3'
     )
@@ -39,20 +66,21 @@ class LecturaResponseSerializer(serializers.ModelSerializer):
             'observacion', 'esta_facturada'
         ]
 
-# --- NUEVO: SERIALIZER PARA HISTORIAL (Prioridad 1.3) ---
 class LecturaHistorialSerializer(serializers.ModelSerializer):
     """
-    Serializer de Salida Plano para Tablas del Frontend.
-    Ruta: Lectura -> Medidor -> Terreno -> Socio
+    Serializer 'Aplanado' (Flattened) optimizado para Tablas de Historial.
+    Trae datos del Medidor y Socio sin anidación profunda para facilitar el uso en Angular.
     """
     id = serializers.IntegerField(read_only=True)
     fecha = serializers.DateField(format="%Y-%m-%d")
+    
+    # Nombres amigables para la tabla
     lectura_actual = serializers.DecimalField(source='valor', max_digits=12, decimal_places=2)
     lectura_anterior = serializers.DecimalField(max_digits=12, decimal_places=2)
     consumo = serializers.DecimalField(source='consumo_del_mes', max_digits=12, decimal_places=2)
-    estado = serializers.SerializerMethodField()
     
-    # Flattening (Aplanado de datos)
+    # Campos calculados / relaciones
+    estado = serializers.SerializerMethodField()
     medidor_codigo = serializers.CharField(source='medidor.codigo', default="S/N")
     socio_nombre = serializers.SerializerMethodField()
 
@@ -68,7 +96,7 @@ class LecturaHistorialSerializer(serializers.ModelSerializer):
 
     def get_socio_nombre(self, obj):
         try:
-            # Navegación defensiva
+            # Navegación segura: Lectura -> Medidor -> Terreno -> Socio
             if obj.medidor and obj.medidor.terreno and obj.medidor.terreno.socio:
                 return f"{obj.medidor.terreno.socio.nombres} {obj.medidor.terreno.socio.apellidos}"
             return "Sin Socio"
