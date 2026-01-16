@@ -11,7 +11,8 @@ from .views import (
     medidor_views,
     barrio_views,
     terreno_views,
-    multa_views # ✅ IMPORTANTE: Agregar esto (lo creamos en el paso de Impugnación)
+    multa_views,
+    servicio_agua_views # ✅ AGREGADO: Importamos la vista del Servicio de Agua
 )
 
 # ==============================================================================
@@ -26,6 +27,10 @@ router.register(r'socios', socio_views.SocioViewSet, basename='socio')
 router.register(r'medidores', medidor_views.MedidorViewSet, basename='medidor')
 router.register(r'barrios', barrio_views.BarrioViewSet, basename='barrio')
 router.register(r'terrenos', terreno_views.TerrenoViewSet, basename='terreno')
+
+# ✅ NUEVO: Gestión de Servicios de Agua (Tarifa Fija)
+# Esto habilita: POST /api/v1/servicios-agua/
+router.register(r'servicios-agua', servicio_agua_views.ServicioAguaViewSet, basename='servicios-agua')
 
 # 3. Gestión de Lecturas e Historial
 router.register(r'lecturas', lectura_views.LecturaViewSet, basename='lectura')
