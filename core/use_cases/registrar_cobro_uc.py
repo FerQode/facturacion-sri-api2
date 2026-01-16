@@ -13,6 +13,8 @@ from adapters.infrastructure.models import FacturaModel, PagoModel
 
 # 3. Servicios e Interfaces
 from adapters.infrastructure.services.django_sri_service import DjangoSRIService
+# ✅ NUEVO IMPORT: Servicio de Correo
+from adapters.infrastructure.services.django_email_service import DjangoEmailService
 
 # 4. Entidades de Dominio
 from core.domain.factura import Factura as FacturaEntity, DetalleFactura
@@ -20,12 +22,12 @@ from core.domain.socio import Socio as SocioEntity
 
 class RegistrarCobroUseCase:
     """
-    Gestiona la Recaudación y la Emisión Electrónica (SRI).
-    Adapta los modelos de Django a tu Entidad de Dominio 'Socio' específica.
+    Gestiona la Recaudación, la Emisión Electrónica (SRI) y la Notificación por Correo.
     """
 
     def __init__(self):
         self.sri_service = DjangoSRIService()
+        self.email_service = DjangoEmailService() # ✅ Instanciamos el servicio de email
 
     def ejecutar(self, factura_id: int, lista_pagos: List[Dict]):
         with transaction.atomic():
@@ -77,7 +79,7 @@ class RegistrarCobroUseCase:
             factura_db.save()
 
             # ==========================================================
-            # 🚀 FASE 2: ORQUESTACIÓN SRI
+            # 🚀 FASE 2: ORQUESTACIÓN SRI + EMAIL
             # ==========================================================
             sri_resultado = {
                 "enviado": False,
@@ -86,7 +88,7 @@ class RegistrarCobroUseCase:
             }
 
             try:
-                # 1. Convertir Infraestructura -> Dominio (Aquí usamos tu Socio real)
+                # 1. Convertir Infraestructura -> Dominio
                 factura_entity, socio_entity = self._convertir_a_dominio(factura_db)
 
                 # 2. Enviar al Servicio SRI
@@ -94,6 +96,7 @@ class RegistrarCobroUseCase:
                 
                 # 3. Procesar Respuesta
                 if respuesta_sri.exito:
+                    # A. Actualizar Datos SRI en BD
                     factura_db.estado_sri = "AUTORIZADO"
                     factura_db.clave_acceso_sri = respuesta_sri.autorizacion_id
                     factura_db.xml_autorizado_sri = respuesta_sri.xml_respuesta
@@ -101,7 +104,24 @@ class RegistrarCobroUseCase:
                     
                     sri_resultado["enviado"] = True
                     sri_resultado["estado"] = "AUTORIZADO"
+
+                    # B. ✅ ENVIAR CORREO (Solo si autorizó)
+                    # Usamos el servicio de correo para enviar la notificación
+                    envio_email = self.email_service.enviar_notificacion_factura(
+                        email_destinatario=factura_db.socio.email,
+                        nombre_socio=f"{factura_db.socio.nombres} {factura_db.socio.apellidos}",
+                        numero_factura=factura_db.id,
+                        xml_autorizado=respuesta_sri.xml_respuesta
+                    )
+
+                    # C. Feedback al usuario
+                    if envio_email:
+                        sri_resultado["mensaje"] = "Factura autorizada y enviada por correo."
+                    else:
+                        sri_resultado["mensaje"] = "Factura autorizada (pero falló envío de correo)."
+
                 else:
+                    # Caso Fallido (SRI rechazó o devolvió error)
                     factura_db.estado_sri = respuesta_sri.estado
                     factura_db.mensaje_error_sri = respuesta_sri.mensaje_error
                     
@@ -111,9 +131,10 @@ class RegistrarCobroUseCase:
                 factura_db.save()
 
             except Exception as e:
+                # Captura de errores técnicos (Ej: Sin conexión, fallo firma, etc.)
                 sri_resultado["estado"] = "ERROR_SISTEMA"
                 sri_resultado["mensaje"] = str(e)
-                # Aquí podrías agregar logs
+                # Aquí podrías agregar un logger.error(e) si lo deseas
 
             return {
                 "mensaje": "Cobro registrado correctamente.",

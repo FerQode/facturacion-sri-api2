@@ -7,13 +7,13 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from django.db import transaction # Usado si implementamos lógica transaccional aquí
+from django.db import transaction 
 
 # --- Clean Architecture: Casos de Uso y DTOs ---
 from core.use_cases.dtos import GenerarFacturaDesdeLecturaDTO
 from core.use_cases.generar_factura_uc import GenerarFacturaDesdeLecturaUseCase
 from core.use_cases.registrar_cobro_uc import RegistrarCobroUseCase
-from core.use_cases.generar_factura_fija_uc import GenerarFacturaFijaUseCase # ✅ NUEVO
+from core.use_cases.generar_factura_fija_uc import GenerarFacturaFijaUseCase 
 from core.services.facturacion_service import FacturacionService
 
 # --- Clean Architecture: Excepciones ---
@@ -33,8 +33,9 @@ from adapters.infrastructure.repositories.django_socio_repository import DjangoS
 from adapters.infrastructure.repositories.django_terreno_repository import DjangoTerrenoRepository
 from adapters.infrastructure.repositories.django_multa_repository import DjangoMultaRepository
 
-# --- Adapters: Modelos (Para optimización de consultas con ORM) ---
-from adapters.infrastructure.models import LecturaModel
+# --- Adapters: Modelos ---
+# ✅ MODIFICADO: Agregamos FacturaModel para consultar deudas directas
+from adapters.infrastructure.models import LecturaModel, FacturaModel
 
 # --- Adapters: Servicios ---
 from adapters.infrastructure.services.django_sri_service import DjangoSRIService
@@ -47,7 +48,7 @@ from adapters.api.serializers.factura_serializers import (
     ConsultarAutorizacionSerializer,
     EmisionMasivaSerializer,
     RegistrarCobroSerializer,
-    LecturaPendienteSerializer # ✅ IMPORTANTE: Agregado para documentar
+    LecturaPendienteSerializer 
 )
 
 # =============================================================================
@@ -68,21 +69,18 @@ class GenerarFacturaAPIView(APIView):
         }
     )
     def post(self, request):
-        # 1. Validación de Entrada
         serializer_req = GenerarFacturaSerializer(data=request.data)
         if not serializer_req.is_valid():
             return Response(serializer_req.errors, status=status.HTTP_400_BAD_REQUEST)
         
         datos_entrada = serializer_req.validated_data
 
-        # 2. Preparar DTO
         dto = GenerarFacturaDesdeLecturaDTO(
             lectura_id=datos_entrada['lectura_id'],
             fecha_emision=datos_entrada['fecha_emision'],
             fecha_vencimiento=datos_entrada['fecha_vencimiento']
         )
 
-        # 3. Composición de Dependencias
         factura_repo = DjangoFacturaRepository()
         lectura_repo = DjangoLecturaRepository()
         medidor_repo = DjangoMedidorRepository()
@@ -90,7 +88,6 @@ class GenerarFacturaAPIView(APIView):
         terreno_repo = DjangoTerrenoRepository()
         sri_service = DjangoSRIService() 
 
-        # 4. Instanciar Caso de Uso
         use_case = GenerarFacturaDesdeLecturaUseCase(
             factura_repo=factura_repo,
             lectura_repo=lectura_repo,
@@ -101,10 +98,7 @@ class GenerarFacturaAPIView(APIView):
         )
 
         try:
-            # 5. Ejecutar Lógica
             factura_generada = use_case.execute(dto)
-
-            # 6. Serializar Respuesta
             serializer_res = FacturaResponseSerializer(factura_generada)
             return Response(serializer_res.data, status=status.HTTP_201_CREATED)
 
@@ -120,7 +114,7 @@ class GenerarFacturaAPIView(APIView):
             )
         
 # =============================================================================
-# 1.1 GENERACIÓN DE FACTURAS TARIFA FIJA (Sin Medidor) - ✅ NUEVO BLOQUE
+# 1.1 GENERACIÓN DE FACTURAS TARIFA FIJA (Sin Medidor)
 # =============================================================================
 class GenerarFacturasFijasAPIView(APIView):
     """
@@ -137,12 +131,8 @@ class GenerarFacturasFijasAPIView(APIView):
     )
     def post(self, request):
         try:
-            # 1. Instanciar Caso de Uso
             uc = GenerarFacturaFijaUseCase()
-            
-            # 2. Ejecutar (Usa fecha de hoy por defecto)
             reporte = uc.ejecutar()
-            
             return Response(reporte, status=status.HTTP_200_OK)
             
         except Exception as e:
@@ -153,89 +143,90 @@ class GenerarFacturasFijasAPIView(APIView):
 
 
 # =============================================================================
-# 2. GESTIÓN MASIVA Y PRE-VISUALIZACIÓN
+# 2. GESTIÓN MASIVA Y COBROS (ENDPOINT INTELIGENTE)
 # =============================================================================
 class FacturaMasivaViewSet(viewsets.ViewSet):
     """
-    Controlador para Pre-visualización de deudas (Agua + Multas) y Emisión Masiva.
+    Controlador para Gestión de Deudas (Cajero) y Emisión Masiva (Admin).
     """
-    
-    def _get_services(self):
-        return {
-            "lectura_repo": DjangoLecturaRepository(),
-            "socio_repo": DjangoSocioRepository(),
-            "multa_repo": DjangoMultaRepository(),
-            "billing_service": FacturacionService()
-        }
 
     @swagger_auto_schema(
-        operation_description="Devuelve la simulación de facturas (Agua + Multas) sin guardar.",
+        operation_description="Endpoint Híbrido: Busca deudas por Cédula (Historial) O por Fecha (Reporte Mes).",
         manual_parameters=[
-            openapi.Parameter('mes', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, required=True),
-            openapi.Parameter('anio', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, required=True),
+            openapi.Parameter('cedula', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Opcional: Filtra historial de un socio"),
+            openapi.Parameter('mes', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description="Opcional: Filtra por mes (requiere anio)"),
+            openapi.Parameter('anio', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description="Opcional: Filtra por año"),
         ],
-        # ✅ MEJORA: Documentamos que retornamos una lista de LecturaPendienteSerializer
-        responses={200: LecturaPendienteSerializer(many=True)}
+        responses={200: "Lista de facturas pendientes"}
     )
+    # ✅ MODIFICADO: Implementación del Endpoint Inteligente
     @action(detail=False, methods=['get'], url_path='pendientes')
-    def previsualizar_pendientes(self, request):
+    def pendientes(self, request):
+        """
+        Endpoint Inteligente para Cajeros y Administradores:
+        1. ?cedula=XYZ -> Muestra TODO lo que debe esa persona (Enero, Febrero, etc.)
+        2. ?mes=1&anio=2026 -> Muestra TODOS los socios que deben de ese mes.
+        """
+        cedula = request.query_params.get('cedula')
         mes = request.query_params.get('mes')
         anio = request.query_params.get('anio')
-        
-        if not mes or not anio:
-            return Response({"error": "Faltan parámetros obligatorios: ?mes=12&anio=2025"}, status=400)
 
-        services = self._get_services()
-        billing_service = services['billing_service']
+        # Base: Solo buscamos facturas que no han sido pagadas
+        # Usamos select_related para traer datos del socio en una sola consulta (Optimización)
+        queryset = FacturaModel.objects.select_related('socio').filter(estado='PENDIENTE')
+
+        # --- LÓGICA HÍBRIDA ---
         
-        # A. Optimización: Usamos ORM con select_related para evitar N+1
-        lecturas_qs = LecturaModel.objects.select_related(
-            'medidor__terreno__socio'
-        ).filter(
-            fecha__month=mes, 
-            fecha__year=anio,
-            esta_facturada=False # Solo las pendientes
-        )
-        
-        data_response = []
-        
-        for lectura_model in lecturas_qs:
-            # B. Mapeo Rápido a Dominio
-            lectura_entity = services['lectura_repo']._map_model_to_domain(lectura_model)
+        # CASO 1: Búsqueda por Socio (Prioridad Cajero)
+        if cedula:
+            queryset = queryset.filter(socio__cedula=cedula)
             
-            # Inyectamos código medidor manual
-            if lectura_model.medidor:
-                lectura_entity.medidor_codigo = lectura_model.medidor.codigo 
-            
-            # Obtenemos el socio
-            if lectura_model.medidor and lectura_model.medidor.terreno and lectura_model.medidor.terreno.socio:
-                socio_model = lectura_model.medidor.terreno.socio
-                socio_entity = services['socio_repo']._map_model_to_domain(socio_model)
-                
-                # C. Buscar Multas Pendientes
-                multas = services['multa_repo'].obtener_pendientes_por_socio(socio_entity.id)
-                
-                # D. Calcular con Servicio de Dominio
-                calculo = billing_service.previsualizar_factura(lectura_entity, socio_entity, multas)
-                
-                data_response.append(calculo)
+            # Si consultan una cédula específica y no hay deudas, respondemos bonito
+            if not queryset.exists():
+                return Response({
+                    "mensaje": f"El socio con cédula {cedula} no tiene deudas pendientes. ¡Está al día! 🎉",
+                    "data": []
+                }, status=200)
+
+        # CASO 2: Reporte General por Fecha (Admin)
+        elif mes and anio:
+            queryset = queryset.filter(
+                fecha_emision__month=mes, 
+                fecha_emision__year=anio
+            )
         
-        # ✅ MEJORA: Usamos el serializer propuesto para validar la salida
-        serializer = LecturaPendienteSerializer(data_response, many=True)
-        return Response(serializer.data, status=200)
+        # CASO 3: Error (No envió parámetros)
+        else:
+            return Response({
+                "error": "Parámetros insuficientes. Envíe '?cedula=...' para cobrar a un socio, O '?mes=..&anio=..' para ver pendientes del mes."
+            }, status=400)
+
+        # --- SERIALIZACIÓN MANUAL (Ligera para listas grandes) ---
+        data = []
+        for f in queryset:
+            data.append({
+                "factura_id": f.id,
+                "socio": f.socio.nombres + " " + f.socio.apellidos,
+                "cedula": f.socio.cedula,
+                "fecha_emision": f.fecha_emision.strftime('%Y-%m-%d'),
+                "total": str(f.total),
+                "estado_sri": f.estado_sri, # Útil para saber si ya fue autorizado
+                "estado_pago": f.estado
+            })
+
+        return Response(data, status=200)
+
 
     @swagger_auto_schema(request_body=EmisionMasivaSerializer)
     @action(detail=False, methods=['post'], url_path='emision-masiva')
     def emision_masiva(self, request):
         """
         Inicia el proceso de generar todas las facturas del mes.
-        (Debe delegar a un Caso de Uso Masivo real en el futuro).
         """
         serializer = EmisionMasivaSerializer(data=request.data)
         if not serializer.is_valid():
              return Response(serializer.errors, status=400)
              
-        # TODO: Conectar con GenerarFacturasMasivasUseCase
         return Response({
             "mensaje": f"Proceso de emisión masiva iniciado para {serializer.validated_data['mes']}/{serializer.validated_data['anio']}",
             "estado": "PROCESANDO"
@@ -290,7 +281,6 @@ class EnviarFacturaSRIAPIView(APIView):
         
         factura_id = serializer.validated_data['factura_id']
         
-        # TODO: Conectar ReenviarFacturaSRIUseCase
         return Response({
             "mensaje": "Funcionalidad de reintento pendiente de conectar al Caso de Uso",
             "factura_id": factura_id,

@@ -1,3 +1,4 @@
+#adapters>infrastucture>models>servicio_model.py
 from django.db import models
 from .socio_model import SocioModel
 from .terreno_model import TerrenoModel
