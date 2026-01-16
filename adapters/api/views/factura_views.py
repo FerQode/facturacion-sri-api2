@@ -13,6 +13,7 @@ from django.db import transaction # Usado si implementamos lógica transaccional
 from core.use_cases.dtos import GenerarFacturaDesdeLecturaDTO
 from core.use_cases.generar_factura_uc import GenerarFacturaDesdeLecturaUseCase
 from core.use_cases.registrar_cobro_uc import RegistrarCobroUseCase
+from core.use_cases.generar_factura_fija_uc import GenerarFacturaFijaUseCase # ✅ NUEVO
 from core.services.facturacion_service import FacturacionService
 
 # --- Clean Architecture: Excepciones ---
@@ -115,6 +116,38 @@ class GenerarFacturaAPIView(APIView):
             print(f"ERROR CRÍTICO EN API: {str(e)}")
             return Response(
                 {"error": f"Error interno del servidor: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+# =============================================================================
+# 1.1 GENERACIÓN DE FACTURAS TARIFA FIJA (Sin Medidor) - ✅ NUEVO BLOQUE
+# =============================================================================
+class GenerarFacturasFijasAPIView(APIView):
+    """
+    Endpoint para ejecutar el proceso masivo de facturación para socios SIN medidor.
+    Ideal para ejecutar al inicio de cada mes.
+    """
+    
+    @swagger_auto_schema(
+        operation_description="Genera facturas masivas para todos los servicios de tipo FIJO activos.",
+        responses={
+            200: "Reporte de ejecución (creadas, omitidas, errores)",
+            500: "Error interno"
+        }
+    )
+    def post(self, request):
+        try:
+            # 1. Instanciar Caso de Uso
+            uc = GenerarFacturaFijaUseCase()
+            
+            # 2. Ejecutar (Usa fecha de hoy por defecto)
+            reporte = uc.ejecutar()
+            
+            return Response(reporte, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response(
+                {"error": f"Error en generación masiva: {str(e)}"}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 

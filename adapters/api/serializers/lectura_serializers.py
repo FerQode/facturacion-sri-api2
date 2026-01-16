@@ -1,6 +1,9 @@
+# adapters/api/serializers/lectura_serializers.py
 from rest_framework import serializers
 from adapters.infrastructure.models import LecturaModel
-from core.use_cases.registrar_lectura_uc import RegistrarLecturaDTO
+
+# ✅ AJUSTE 1: Importar desde el archivo de DTOs correcto (según nuestra estructura anterior)
+from core.use_cases.lectura_dtos import RegistrarLecturaDTO
 
 # =============================================================================
 # 1. SERIALIZERS DE ENTRADA (Input)
@@ -12,7 +15,7 @@ class RegistrarLecturaSerializer(serializers.Serializer):
     """
     medidor_id = serializers.IntegerField(required=True)
     
-    # Estandarizamos al nombre que usa el Frontend: 'lectura_actual'
+    # ✅ SEMÁNTICA: Usamos 'lectura_actual' para que el Frontend entienda claramente
     lectura_actual = serializers.DecimalField(
         required=True, 
         min_value=0, 
@@ -30,14 +33,15 @@ class RegistrarLecturaSerializer(serializers.Serializer):
         return RegistrarLecturaDTO(
             medidor_id=self.validated_data['medidor_id'],
             
-            # Mapeo: Frontend 'lectura_actual' -> Dominio 'valor'
-            valor=float(self.validated_data['lectura_actual']),
+            # ✅ CORRECCIÓN CRÍTICA: 
+            # El DTO espera 'lectura_actual', NO 'valor'.
+            # Si pasas 'valor', tendrás un TypeError como el anterior.
+            lectura_actual=float(self.validated_data['lectura_actual']),
             
             fecha_lectura=self.validated_data['fecha_lectura'],
             
-            # ✅ CORRECCIÓN CRÍTICA PROPUESTA POR FRONTEND
-            # Asignamos un operador por defecto (Admin) para evitar error de falta de ID.
-            # (En el futuro esto puede venir del request.user.id en la vista)
+            # Asignamos un operador por defecto (Admin) temporalmente.
+            # Idealmente, la Vista debería sobrescribir esto con request.user.id
             operador_id=1, 
             
             observacion=self.validated_data.get('observacion')
@@ -52,7 +56,11 @@ class LecturaResponseSerializer(serializers.ModelSerializer):
     Respuesta simple al crear una lectura.
     """
     medidor_id = serializers.IntegerField()
-    # Mapeamos el nombre interno 'consumo_del_mes_m3' a 'consumo_del_mes' para el JSON
+    
+    # ✅ CONSISTENCIA: Usamos el nombre del campo del modelo. 
+    # Asumo que en tu modelo se llama 'consumo_del_mes' o calculas 'consumo_del_mes_m3'.
+    # Si es una propiedad del modelo, no necesitas 'source' si el nombre coincide.
+    # Aquí lo estandarizo a 'consumo_del_mes' usando el source correcto.
     consumo_del_mes = serializers.DecimalField(
         max_digits=12, decimal_places=2, read_only=True, source='consumo_del_mes_m3'
     )
@@ -68,16 +76,18 @@ class LecturaResponseSerializer(serializers.ModelSerializer):
 
 class LecturaHistorialSerializer(serializers.ModelSerializer):
     """
-    Serializer 'Aplanado' (Flattened) optimizado para Tablas de Historial.
-    Trae datos del Medidor y Socio sin anidación profunda para facilitar el uso en Angular.
+    Serializer 'Aplanado' (Flattened) optimizado para Tablas de Historial en Angular.
     """
     id = serializers.IntegerField(read_only=True)
     fecha = serializers.DateField(format="%Y-%m-%d")
     
-    # Nombres amigables para la tabla
+    # Renombramos 'valor' (BD) a 'lectura_actual' (API) para ser consistentes con el Input
     lectura_actual = serializers.DecimalField(source='valor', max_digits=12, decimal_places=2)
+    
     lectura_anterior = serializers.DecimalField(max_digits=12, decimal_places=2)
-    consumo = serializers.DecimalField(source='consumo_del_mes', max_digits=12, decimal_places=2)
+    
+    # ✅ CONSISTENCIA: Usamos el mismo source que en el ResponseSerializer
+    consumo = serializers.DecimalField(source='consumo_del_mes_m3', max_digits=12, decimal_places=2)
     
     # Campos calculados / relaciones
     estado = serializers.SerializerMethodField()
@@ -100,5 +110,5 @@ class LecturaHistorialSerializer(serializers.ModelSerializer):
             if obj.medidor and obj.medidor.terreno and obj.medidor.terreno.socio:
                 return f"{obj.medidor.terreno.socio.nombres} {obj.medidor.terreno.socio.apellidos}"
             return "Sin Socio"
-        except Exception:
-            return "Error Datos"
+        except AttributeError:
+            return "Datos Incompletos"

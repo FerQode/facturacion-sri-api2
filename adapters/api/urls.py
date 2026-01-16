@@ -59,6 +59,12 @@ urlpatterns = [
         name='generar-factura'
     ),
     
+    # ✅ NUEVO: Generación Masiva para Tarifa Fija
+    path(
+        'facturas/generar-fijas/', 
+        factura_views.GenerarFacturasFijasAPIView.as_view(), 
+        name='generar-facturas-fijas'
+    ),
     # Reintento manual de envío al SRI
     path(
         'facturas/enviar-sri/', 

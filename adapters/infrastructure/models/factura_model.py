@@ -4,25 +4,41 @@ from decimal import Decimal
 from .socio_model import SocioModel
 from .medidor_model import MedidorModel
 from .lectura_model import LecturaModel
+# ### NUEVO: Importamos el modelo de Servicio (Debes haber creado el archivo servicio_model.py primero)
+from .servicio_model import ServicioModel
 from core.shared.enums import EstadoFactura
+
 
 class FacturaModel(models.Model):
     ESTADO_CHOICES = [(estado.value, estado.name) for estado in EstadoFactura]
-    
+
     # Opciones de SRI
     AMBIENTE_CHOICES = ((1, 'PRUEBAS'), (2, 'PRODUCCION'))
     TIPO_EMISION_CHOICES = ((1, 'NORMAL'),)
 
     socio = models.ForeignKey(SocioModel, on_delete=models.PROTECT, related_name='facturas')
+
+    # ### NUEVO: El enlace al Contrato/Servicio
+    # Esto permite saber si la factura corresponde a un servicio "FIJO" o "MEDIDO"
+    servicio = models.ForeignKey(
+        ServicioModel,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='facturas',
+        help_text="Vincula la factura al contrato de servicio específico (Fijo o Medido)"
+    )
+
+    # Estos campos ya los tenías bien configurados como opcionales, los mantenemos así.
     medidor = models.ForeignKey(MedidorModel, on_delete=models.PROTECT, null=True, blank=True)
     lectura = models.OneToOneField(LecturaModel, on_delete=models.PROTECT, null=True, blank=True)
-    
+
     fecha_emision = models.DateField()
     fecha_vencimiento = models.DateField()
     fecha_registro = models.DateTimeField(auto_now_add=True)
 
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default=EstadoFactura.PENDIENTE.value)
-    
+
     # Totales
     subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     impuestos = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
@@ -31,12 +47,12 @@ class FacturaModel(models.Model):
     # --- CAMPOS SRI ---
     sri_ambiente = models.PositiveIntegerField(choices=AMBIENTE_CHOICES, default=1)
     sri_tipo_emision = models.PositiveIntegerField(choices=TIPO_EMISION_CHOICES, default=1)
-    
+
     clave_acceso_sri = models.CharField(max_length=49, null=True, blank=True, unique=True, db_index=True)
-    
-    # --- ¡CAMPO QUE FALTABA Y CAUSABA EL ERROR! ---
-    estado_sri = models.CharField(max_length=50, null=True, blank=True, help_text="Estado devuelto por el SRI (RECIBIDA, AUTORIZADO, etc)")
-    # -----------------------------------------------
+
+    # Mantenemos tu corrección del estado_sri
+    estado_sri = models.CharField(max_length=50, null=True, blank=True,
+                                  help_text="Estado devuelto por el SRI (RECIBIDA, AUTORIZADO, etc)")
 
     fecha_autorizacion_sri = models.DateTimeField(null=True, blank=True)
     xml_autorizado_sri = models.TextField(null=True, blank=True)
@@ -47,6 +63,8 @@ class FacturaModel(models.Model):
         verbose_name = 'Factura'
         ordering = ['-fecha_registro']
 
+
+# El detalle se mantiene igual, está perfecto.
 class DetalleFacturaModel(models.Model):
     factura = models.ForeignKey(FacturaModel, on_delete=models.CASCADE, related_name='detalles')
     concepto = models.CharField(max_length=255)

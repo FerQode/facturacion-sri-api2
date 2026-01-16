@@ -10,10 +10,11 @@ from .medidor_model import MedidorModel
 from .lectura_model import LecturaModel
 from .factura_model import FacturaModel, DetalleFacturaModel
 
-# 3. --- NUEVOS MODELOS (Multas y Pagos Mixtos) ---
-# Estos son los que faltaban y causaban el error de importación
+# 3. --- NUEVOS MODELOS (Multas, Pagos y Servicios) ---
 from .multa_model import MultaModel
 from .pago_model import PagoModel
+# ✅ AQUI ESTABA EL ERROR: Faltaba esta línea
+from .servicio_model import ServicioModel 
 
 # 4. Actualizamos la lista __all__ para exportar todo limpiamente
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     'LecturaModel', 
     'FacturaModel', 
     'DetalleFacturaModel',
-    'MultaModel',   # ✅ Agregado
-    'PagoModel',    # ✅ Agregado
+    'MultaModel',
+    'PagoModel',
+    'ServicioModel', # ✅ Agregado a la lista pública
 ]
