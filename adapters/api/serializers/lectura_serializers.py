@@ -14,15 +14,15 @@ class RegistrarLecturaSerializer(serializers.Serializer):
     Valida el JSON que envía Angular para registrar una lectura.
     """
     medidor_id = serializers.IntegerField(required=True)
-    
+
     # ✅ SEMÁNTICA: Usamos 'lectura_actual' para que el Frontend entienda claramente
     lectura_actual = serializers.DecimalField(
-        required=True, 
-        min_value=0, 
-        max_digits=12, 
+        required=True,
+        min_value=0,
+        max_digits=12,
         decimal_places=2
     )
-    
+
     fecha_lectura = serializers.DateField(required=True)
     observacion = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
@@ -32,18 +32,18 @@ class RegistrarLecturaSerializer(serializers.Serializer):
         """
         return RegistrarLecturaDTO(
             medidor_id=self.validated_data['medidor_id'],
-            
-            # ✅ CORRECCIÓN CRÍTICA: 
+
+            # ✅ CORRECCIÓN CRÍTICA:
             # El DTO espera 'lectura_actual', NO 'valor'.
             # Si pasas 'valor', tendrás un TypeError como el anterior.
             lectura_actual=float(self.validated_data['lectura_actual']),
-            
+
             fecha_lectura=self.validated_data['fecha_lectura'],
-            
+
             # Asignamos un operador por defecto (Admin) temporalmente.
             # Idealmente, la Vista debería sobrescribir esto con request.user.id
-            operador_id=1, 
-            
+            operador_id=1,
+
             observacion=self.validated_data.get('observacion')
         )
 
@@ -56,8 +56,8 @@ class LecturaResponseSerializer(serializers.ModelSerializer):
     Respuesta simple al crear una lectura.
     """
     medidor_id = serializers.IntegerField()
-    
-    # ✅ CONSISTENCIA: Usamos el nombre del campo del modelo. 
+
+    # ✅ CONSISTENCIA: Usamos el nombre del campo del modelo.
     # Asumo que en tu modelo se llama 'consumo_del_mes' o calculas 'consumo_del_mes_m3'.
     # Si es una propiedad del modelo, no necesitas 'source' si el nombre coincide.
     # Aquí lo estandarizo a 'consumo_del_mes' usando el source correcto.
@@ -69,8 +69,8 @@ class LecturaResponseSerializer(serializers.ModelSerializer):
     class Meta:
         model = LecturaModel
         fields = [
-            'id', 'medidor_id', 'fecha', 'valor', 
-            'lectura_anterior', 'consumo_del_mes', 
+            'id', 'medidor_id', 'fecha', 'valor',
+            'lectura_anterior', 'consumo_del_mes',
             'observacion', 'esta_facturada'
         ]
 
@@ -80,15 +80,15 @@ class LecturaHistorialSerializer(serializers.ModelSerializer):
     """
     id = serializers.IntegerField(read_only=True)
     fecha = serializers.DateField(format="%Y-%m-%d")
-    
+
     # Renombramos 'valor' (BD) a 'lectura_actual' (API) para ser consistentes con el Input
     lectura_actual = serializers.DecimalField(source='valor', max_digits=12, decimal_places=2)
-    
+
     lectura_anterior = serializers.DecimalField(max_digits=12, decimal_places=2)
-    
+
     # ✅ CONSISTENCIA: Usamos el mismo source que en el ResponseSerializer
-    consumo = serializers.DecimalField(source='consumo_del_mes_m3', max_digits=12, decimal_places=2)
-    
+    consumo = serializers.DecimalField(source='consumo_del_mes', max_digits=12, decimal_places=2)
+
     # Campos calculados / relaciones
     estado = serializers.SerializerMethodField()
     medidor_codigo = serializers.CharField(source='medidor.codigo', default="S/N")
@@ -97,7 +97,7 @@ class LecturaHistorialSerializer(serializers.ModelSerializer):
     class Meta:
         model = LecturaModel
         fields = [
-            'id', 'fecha', 'medidor_codigo', 'socio_nombre', 
+            'id', 'fecha', 'medidor_codigo', 'socio_nombre',
             'lectura_anterior', 'lectura_actual', 'consumo', 'estado'
         ]
 

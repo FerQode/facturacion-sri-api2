@@ -2,41 +2,34 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from drf_yasg.utils import swagger_auto_schema
-from rest_framework import serializers
 
 # Imports del Dominio
 from core.use_cases.registrar_cobro_uc import RegistrarCobroUseCase
-from core.shared.enums import MetodoPagoEnum
+from core.shared.enums import MetodoPagoEnum, EstadoFactura
 from core.shared.exceptions import BusinessRuleException, EntityNotFoundException
 
-# --- Serializers (DTOs) ---
-class DetallePagoSerializer(serializers.Serializer):
-    metodo = serializers.ChoiceField(choices=[e.value for e in MetodoPagoEnum])
-    monto = serializers.DecimalField(max_digits=10, decimal_places=2)
-    referencia = serializers.CharField(required=False, allow_blank=True, help_text="Obligatorio para Transferencia")
-    observacion = serializers.CharField(required=False, allow_blank=True)
+# Modelos (Para lectura/validación)
+from adapters.infrastructure.models.factura_model import FacturaModel
+from adapters.infrastructure.models.pago_model import PagoModel
 
-class RegistrarCobroSerializer(serializers.Serializer):
-    factura_id = serializers.IntegerField()
-    pagos = DetallePagoSerializer(many=True)
+# ✅ IMPORTAMOS LOS SERIALIZERS (Asegúrate de que la ruta sea correcta)
+from adapters.api.serializers.factura_serializers import (
+    RegistrarCobroSerializer,
+    ReportarPagoSerializer,
+    ValidarPagoSerializer
+)
 
 class CobroViewSet(viewsets.ViewSet):
     """
     Controlador de Recaudación.
-    Orquesta el cobro y la emisión automática al SRI.
     """
 
-    @swagger_auto_schema(
-        operation_description="Registra el cobro de una factura y dispara la autorización al SRI.",
-        request_body=RegistrarCobroSerializer,
-        responses={
-            200: "Cobro exitoso y procesado por SRI",
-            400: "Regla de Negocio (Ej: Pago incompleto)",
-            404: "Factura no encontrada",
-            500: "Error técnico interno"
-        }
-    )
+    # --------------------------------------------------------------------------
+    # 1. COBRO EN VENTANILLA (Tesorero)
+    # --------------------------------------------------------------------------
+    @swagger_auto_schema(request_body=RegistrarCobroSerializer)
     @action(detail=False, methods=['post'], url_path='registrar')
     def registrar_cobro(self, request):
         serializer = RegistrarCobroSerializer(data=request.data)
@@ -44,26 +37,114 @@ class CobroViewSet(viewsets.ViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # 1. Instanciamos el Caso de Uso
             uc = RegistrarCobroUseCase()
-            
-            # 2. Ejecutamos la lógica (Cobrar -> Facturar SRI)
+            # Pagos directos en ventanilla nacen validados
             resultado = uc.ejecutar(
                 factura_id=serializer.validated_data['factura_id'],
                 lista_pagos=serializer.validated_data['pagos']
             )
-            
-            # 3. Respuesta Exitosa
             return Response(resultado, status=status.HTTP_200_OK)
 
-        except EntityNotFoundException as e:
-            # Error 404: La factura no existe en BD
-            return Response({"error": "Recurso no encontrado", "detalle": str(e)}, status=status.HTTP_404_NOT_FOUND)
-
-        except BusinessRuleException as e:
-            # Error 400: Lógica de negocio (Ya pagada, montos no cuadran)
-            return Response({"error": "Error de validación", "detalle": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
+        except (EntityNotFoundException, BusinessRuleException) as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            # Error 500: Fallo técnico no controlado (Bug, DB caída, etc)
-            return Response({"error": "Error interno del servidor", "detalle": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": "Error interno", "detalle": str(e)}, status=500)
+
+    # --------------------------------------------------------------------------
+    # 2. SOCIO SUBE COMPROBANTE (Móvil)
+    # --------------------------------------------------------------------------
+    @swagger_auto_schema(request_body=ReportarPagoSerializer)
+    @action(detail=False, methods=['post'], url_path='subir_comprobante', parser_classes=[MultiPartParser, FormParser])
+    def subir_comprobante(self, request):
+        serializer = ReportarPagoSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            data = serializer.validated_data
+            factura = FacturaModel.objects.get(pk=data['factura_id'])
+
+            if factura.estado == EstadoFactura.PAGADA.value:
+                return Response({"error": "Esta factura ya está pagada."}, status=400)
+
+            # Guardamos el pago como NO VALIDADO
+            pago = PagoModel.objects.create(
+                factura=factura,
+                metodo='TRANSFERENCIA',
+                monto=data['monto'],
+                referencia=data['referencia'],
+                comprobante_imagen=data['comprobante'],
+                validado=False  # ⏳ Requiere revisión del Tesorero
+            )
+
+            # Actualizamos estado de factura
+            factura.estado = EstadoFactura.POR_VALIDAR.value
+            factura.save()
+
+            return Response({
+                "mensaje": "Comprobante recibido. Pendiente de aprobación.",
+                "pago_id": pago.id,
+                "foto_url": pago.comprobante_imagen.url if pago.comprobante_imagen else None
+            }, status=status.HTTP_201_CREATED)
+
+        except FacturaModel.DoesNotExist:
+            return Response({"error": "Factura no encontrada"}, status=404)
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+
+    # --------------------------------------------------------------------------
+    # 3. TESORERO VALIDA (Listar y Aprobar)
+    # --------------------------------------------------------------------------
+    @action(detail=False, methods=['get'], url_path='pendientes-validacion')
+    def listar_pendientes_validacion(self, request):
+        # Traemos pagos no validados con datos del socio para mostrar en tabla
+        pagos = PagoModel.objects.filter(validado=False).select_related('factura', 'factura__socio')
+
+        data = []
+        for p in pagos:
+            # Construimos la URL completa de la imagen
+            img_url = request.build_absolute_uri(p.comprobante_imagen.url) if p.comprobante_imagen else None
+
+            data.append({
+                "pago_id": p.id,
+                "factura_id": p.factura.id,
+                "socio": f"{p.factura.socio.nombres} {p.factura.socio.apellidos}",
+                "cedula": p.factura.socio.cedula,
+                "banco_fecha": p.fecha_registro.strftime("%Y-%m-%d %H:%M"),
+                "monto": p.monto,
+                "referencia": p.referencia,
+                "comprobante_url": img_url
+            })
+        return Response(data, status=200)
+
+    @action(detail=False, methods=['post'], url_path='validar-transferencia')
+    def validar_transferencia(self, request):
+        serializer = ValidarPagoSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+
+        pago_id = serializer.validated_data['pago_id']
+        accion = serializer.validated_data['accion']
+
+        try:
+            pago = PagoModel.objects.get(id=pago_id)
+            factura = pago.factura
+
+            if accion == 'RECHAZAR':
+                pago.delete() # O marcar como rechazado
+                # Si no hay más pagos pendientes, devolvemos a PENDIENTE
+                if not factura.pagos_registrados.filter(validado=False).exists():
+                    factura.estado = EstadoFactura.PENDIENTE.value
+                    factura.save()
+                return Response({"mensaje": "Pago rechazado."}, status=200)
+
+            elif accion == 'APROBAR':
+                pago.validado = True
+                pago.save()
+
+                return Response({
+                    "mensaje": "Transferencia VERIFICADA. Ya puede proceder al cobro en Caja."
+                }, status=200)
+
+        except PagoModel.DoesNotExist:
+            return Response({"error": "Pago no encontrado"}, status=404)

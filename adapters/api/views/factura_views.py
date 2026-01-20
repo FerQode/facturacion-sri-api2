@@ -7,19 +7,20 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from django.db import transaction 
+from datetime import date
+from django.db import transaction
 
 # --- Clean Architecture: Casos de Uso y DTOs ---
 from core.use_cases.dtos import GenerarFacturaDesdeLecturaDTO
 from core.use_cases.generar_factura_uc import GenerarFacturaDesdeLecturaUseCase
 from core.use_cases.registrar_cobro_uc import RegistrarCobroUseCase
-from core.use_cases.generar_factura_fija_uc import GenerarFacturaFijaUseCase 
+from core.use_cases.generar_factura_fija_uc import GenerarFacturaFijaUseCase
 from core.services.facturacion_service import FacturacionService
-
+from core.use_cases.generar_factura_fija_uc import GenerarFacturaFijaUseCase
 # --- Clean Architecture: Excepciones ---
 from core.shared.exceptions import (
-    LecturaNoEncontradaError, 
-    MedidorNoEncontradoError, 
+    LecturaNoEncontradaError,
+    MedidorNoEncontradoError,
     ValidacionError,
     EntityNotFoundException,
     BusinessRuleException
@@ -42,13 +43,13 @@ from adapters.infrastructure.services.django_sri_service import DjangoSRIService
 
 # --- Adapters: Serializers ---
 from adapters.api.serializers.factura_serializers import (
-    GenerarFacturaSerializer, 
+    GenerarFacturaSerializer,
     FacturaResponseSerializer,
     EnviarFacturaSRISerializer,
     ConsultarAutorizacionSerializer,
     EmisionMasivaSerializer,
     RegistrarCobroSerializer,
-    LecturaPendienteSerializer 
+    LecturaPendienteSerializer
 )
 
 # =============================================================================
@@ -63,8 +64,8 @@ class GenerarFacturaAPIView(APIView):
         operation_description="Genera factura, calcula montos y envía al SRI.",
         request_body=GenerarFacturaSerializer,
         responses={
-            201: FacturaResponseSerializer, 
-            400: "Error de Validación", 
+            201: FacturaResponseSerializer,
+            400: "Error de Validación",
             404: "Recurso no encontrado"
         }
     )
@@ -72,7 +73,7 @@ class GenerarFacturaAPIView(APIView):
         serializer_req = GenerarFacturaSerializer(data=request.data)
         if not serializer_req.is_valid():
             return Response(serializer_req.errors, status=status.HTTP_400_BAD_REQUEST)
-        
+
         datos_entrada = serializer_req.validated_data
 
         dto = GenerarFacturaDesdeLecturaDTO(
@@ -86,7 +87,7 @@ class GenerarFacturaAPIView(APIView):
         medidor_repo = DjangoMedidorRepository()
         socio_repo = DjangoSocioRepository()
         terreno_repo = DjangoTerrenoRepository()
-        sri_service = DjangoSRIService() 
+        sri_service = DjangoSRIService()
 
         use_case = GenerarFacturaDesdeLecturaUseCase(
             factura_repo=factura_repo,
@@ -109,10 +110,10 @@ class GenerarFacturaAPIView(APIView):
         except Exception as e:
             print(f"ERROR CRÍTICO EN API: {str(e)}")
             return Response(
-                {"error": f"Error interno del servidor: {str(e)}"}, 
+                {"error": f"Error interno del servidor: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        
+
 # =============================================================================
 # 1.1 GENERACIÓN DE FACTURAS TARIFA FIJA (Sin Medidor)
 # =============================================================================
@@ -121,7 +122,7 @@ class GenerarFacturasFijasAPIView(APIView):
     Endpoint para ejecutar el proceso masivo de facturación para socios SIN medidor.
     Ideal para ejecutar al inicio de cada mes.
     """
-    
+
     @swagger_auto_schema(
         operation_description="Genera facturas masivas para todos los servicios de tipo FIJO activos.",
         responses={
@@ -134,10 +135,10 @@ class GenerarFacturasFijasAPIView(APIView):
             uc = GenerarFacturaFijaUseCase()
             reporte = uc.ejecutar()
             return Response(reporte, status=status.HTTP_200_OK)
-            
+
         except Exception as e:
             return Response(
-                {"error": f"Error en generación masiva: {str(e)}"}, 
+                {"error": f"Error en generación masiva: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -159,89 +160,225 @@ class FacturaMasivaViewSet(viewsets.ViewSet):
         ],
         responses={200: "Lista de facturas pendientes"}
     )
-    # ✅ MODIFICADO: Implementación del Endpoint Inteligente
+# ======================================================
+    # ENDPOINT INTELIGENTE (VERSIÓN DEFINITIVA - CASCADA)
+    # ======================================================
     @action(detail=False, methods=['get'], url_path='pendientes')
     def pendientes(self, request):
         """
-        Endpoint Inteligente para Cajeros y Administradores:
-        1. ?cedula=XYZ -> Muestra TODO lo que debe esa persona (Enero, Febrero, etc.)
-        2. ?mes=1&anio=2026 -> Muestra TODOS los socios que deben de ese mes.
+        Endpoint Inteligente:
+        Maneja Cédula, Fechas y Estado en cascada.
         """
+        # 1. Capturamos TODOS los parámetros
         cedula = request.query_params.get('cedula')
+        dia = request.query_params.get('dia')   # ¡Ojo! Agregué 'dia' porque vi en tu log que lo envías
         mes = request.query_params.get('mes')
         anio = request.query_params.get('anio')
+        ver_historial = request.query_params.get('ver_historial')
 
-        # Base: Solo buscamos facturas que no han sido pagadas
-        # Usamos select_related para traer datos del socio en una sola consulta (Optimización)
-        queryset = FacturaModel.objects.select_related('socio').filter(estado='PENDIENTE')
+        # 2. Query Base
+        queryset = FacturaModel.objects.select_related(
+            'socio', 'medidor', 'lectura'
+        ).order_by('-fecha_emision')
 
-        # --- LÓGICA HÍBRIDA ---
-        
-        # CASO 1: Búsqueda por Socio (Prioridad Cajero)
+        # -----------------------------------------------------
+        # FASE 1: FILTROS DE BÚSQUEDA (Se suman, no se excluyen)
+        # -----------------------------------------------------
+
+        # Filtro por Socio
         if cedula:
-            queryset = queryset.filter(socio__cedula=cedula)
-            
-            # Si consultan una cédula específica y no hay deudas, respondemos bonito
-            if not queryset.exists():
-                return Response({
-                    "mensaje": f"El socio con cédula {cedula} no tiene deudas pendientes. ¡Está al día! 🎉",
-                    "data": []
-                }, status=200)
+            queryset = queryset.filter(socio__cedula__icontains=cedula) # icontains es más flexible
 
-        # CASO 2: Reporte General por Fecha (Admin)
-        elif mes and anio:
-            queryset = queryset.filter(
-                fecha_emision__month=mes, 
-                fecha_emision__year=anio
-            )
-        
-        # CASO 3: Error (No envió parámetros)
-        else:
-            return Response({
-                "error": "Parámetros insuficientes. Envíe '?cedula=...' para cobrar a un socio, O '?mes=..&anio=..' para ver pendientes del mes."
-            }, status=400)
+        # Filtro por Fecha (Puede combinarse con cédula o ir solo)
+        if anio:
+            queryset = queryset.filter(fecha_emision__year=anio)
+        if mes:
+            queryset = queryset.filter(fecha_emision__month=mes)
+        if dia:
+            queryset = queryset.filter(fecha_emision__day=dia)
 
-        # --- SERIALIZACIÓN MANUAL (Ligera para listas grandes) ---
+        # -----------------------------------------------------
+        # FASE 2: LA REGLA DE ORO (Estado)
+        # -----------------------------------------------------
+
+        # Si NO piden explícitamente ver el historial...
+        # ...ENTONCES SOLO MOSTRAMOS LO QUE SE DEBE (PENDIENTE)
+        if ver_historial != 'true':
+            queryset = queryset.filter(estado__in=['PENDIENTE', 'POR_VALIDAR'])
+
+        # Si piden historial (ver_historial='true'), no filtramos estado
+        # y mostramos todo (Pagadas + Pendientes).
+
+        # Validación si no hay resultados
+        if not queryset.exists():
+            return Response([], status=200)
+
+        # -----------------------------------------------------
+        # FASE 3: SERIALIZACIÓN
+        # -----------------------------------------------------
         data = []
         for f in queryset:
+            codigo_medidor = "SIN MEDIDOR"
+            consumo_str = "-"
+
+            if f.medidor:
+                codigo_medidor = f.medidor.codigo
+
+            if f.lectura:
+                consumo_str = f"{f.lectura.consumo_del_mes}"
+
+            clave_sri = getattr(f, 'clave_acceso', None) or getattr(f, 'clave_acceso_sri', None)
+
             data.append({
                 "factura_id": f.id,
                 "socio": f.socio.nombres + " " + f.socio.apellidos,
                 "cedula": f.socio.cedula,
                 "fecha_emision": f.fecha_emision.strftime('%Y-%m-%d'),
+                "medidor": codigo_medidor,
+                "consumo": consumo_str,
+                "agua": str(f.subtotal),
+                "multas": "0.00",
                 "total": str(f.total),
-                "estado_sri": f.estado_sri, # Útil para saber si ya fue autorizado
-                "estado_pago": f.estado
+                "estado_sri": f.estado_sri,
+                "estado_pago": f.estado,
+                "direccion": f.socio.direccion or "S/N",
+                "clave_acceso_sri": clave_sri
             })
 
         return Response(data, status=200)
 
 
+# ======================================================
+    # EMISIÓN MASIVA (LÓGICA REAL QUE CAMBIA EL 0 A 1)
+    # ======================================================
     @swagger_auto_schema(request_body=EmisionMasivaSerializer)
     @action(detail=False, methods=['post'], url_path='emision-masiva')
     def emision_masiva(self, request):
         """
-        Inicia el proceso de generar todas las facturas del mes.
+        Ejecuta la facturación REAL:
+        1. Procesa lecturas pendientes (Edison).
+        2. Procesa tarifas fijas (Adrián).
         """
         serializer = EmisionMasivaSerializer(data=request.data)
         if not serializer.is_valid():
              return Response(serializer.errors, status=400)
-             
+
+        mes = serializer.validated_data['mes']
+        anio = serializer.validated_data['anio']
+
+        # TRANSACCIÓN ATÓMICA: Todo o Nada (Seguridad Bancaria)
+        with transaction.atomic():
+
+            # --- PASO A: FACTURAR MEDIDORES (EDISON) ---
+            # Buscamos lecturas que existen PERO no se han cobrado (esta_facturada=0)
+            lecturas_pendientes = LecturaModel.objects.filter(
+                esta_facturada=False,   # <--- Aquí buscamos los ceros
+                fecha__month=mes,
+                fecha__year=anio,
+                medidor__estado='ACTIVO'
+            )
+
+            medidores_procesados = 0
+            errores_medidores = []
+
+            # Inicializamos repositorios
+            factura_repo = DjangoFacturaRepository()
+            lectura_repo = DjangoLecturaRepository()
+            medidor_repo = DjangoMedidorRepository()
+            socio_repo = DjangoSocioRepository()
+            terreno_repo = DjangoTerrenoRepository()
+            sri_service = DjangoSRIService()
+
+            use_case_medidor = GenerarFacturaDesdeLecturaUseCase(
+                factura_repo, lectura_repo, medidor_repo,
+                terreno_repo, socio_repo
+            )
+
+            # Procesamos a Edison y compañía
+            for lect in lecturas_pendientes:
+                try:
+                    dto = GenerarFacturaDesdeLecturaDTO(
+                        lectura_id=lect.id,
+                        fecha_emision=date.today(),
+                        fecha_vencimiento=date.today()
+                    )
+                    use_case_medidor.execute(dto)
+                    # NOTA: El use_case internamente pone lect.esta_facturada = True (1)
+                    medidores_procesados += 1
+                except Exception as e:
+                    errores_medidores.append(f"Lectura ID {lect.id}: {str(e)}")
+
+            # --- PASO B: FACTURAR ACOMETIDAS FIJAS (ADRIÁN) ---
+            # Esto busca socios SIN medidor y les cobra los $3.00
+            uc_fija = GenerarFacturaFijaUseCase()
+            reporte_fijas = uc_fija.ejecutar()
+
+        # --- RESPUESTA ---
         return Response({
-            "mensaje": f"Proceso de emisión masiva iniciado para {serializer.validated_data['mes']}/{serializer.validated_data['anio']}",
-            "estado": "PROCESANDO"
+            "mensaje": "Proceso de emisión finalizado exitosamente.",
+            "resumen": {
+                "medidores_generados": medidores_procesados,
+                "acometidas_generadas": reporte_fijas.get('creadas', 0),
+                "errores": errores_medidores + reporte_fijas.get('errores', []),
+                "mes_procesado": f"{mes}/{anio}"
+            }
         }, status=200)
 
+# ======================================================
+    # NUEVO: PRE-VISUALIZACIÓN (CORREGIDO - NORMATIVA REAL)
+    # ======================================================
+    @action(detail=False, methods=['get'], url_path='pre-emision')
+    def pre_emision(self, request):
+        """
+        Devuelve la lista de Lecturas listas para cobrar.
+        """
+        # 1. Buscamos lecturas NO facturadas
+        lecturas_pendientes = LecturaModel.objects.select_related(
+            'medidor', 'medidor__terreno__socio'
+        ).filter(
+            esta_facturada=False,
+            medidor__estado='ACTIVO'
+        ).order_by('medidor__terreno__socio__apellidos')
 
+        data = []
+
+        # --- VALORES SEGÚN RESOLUCIÓN MAATE ---
+        TARIFA_BASE = 3.00
+        VALOR_M3_EXTRA = 0.25
+        BASE_M3 = 120
+
+        for lect in lecturas_pendientes:
+            consumo = float(lect.consumo_del_mes)
+
+            valor_estimado = TARIFA_BASE
+
+            # Solo cobramos extra si supera los 120 metros cúbicos
+            if consumo > BASE_M3:
+                excedente = consumo - BASE_M3
+                valor_estimado += (excedente * VALOR_M3_EXTRA)
+
+            nombre_socio = "Desconocido"
+            if lect.medidor and lect.medidor.terreno and lect.medidor.terreno.socio:
+                nombre_socio = f"{lect.medidor.terreno.socio.apellidos} {lect.medidor.terreno.socio.nombres}"
+
+            data.append({
+                "lectura_id": lect.id,
+                "socio": nombre_socio,
+                "codigo_medidor": lect.medidor.codigo,
+                "lectura_anterior": lect.lectura_anterior,
+                "lectura_actual": lect.valor,
+                "consumo": consumo,
+                "valor_estimado": round(valor_estimado, 2),
+                "estado": "LISTO PARA FACTURAR"
+            })
+
+        return Response(data, status=status.HTTP_200_OK)
 # =============================================================================
 # 3. GESTIÓN DE COBROS Y PAGOS
 # =============================================================================
 class CobroViewSet(viewsets.ViewSet):
-    """
-    Maneja la recaudación y registro de pagos mixtos.
-    """
 
-    @swagger_auto_schema(request_body=RegistrarCobroSerializer)
+    # ✅ AGREGA ESTO: Define que la URL será /api/v1/cobros/registrar/
     @action(detail=False, methods=['post'], url_path='registrar')
     def registrar_cobro(self, request):
         serializer = RegistrarCobroSerializer(data=request.data)
@@ -249,7 +386,11 @@ class CobroViewSet(viewsets.ViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         try:
+            # ✅ IMPORTANTE: Inyectar repositorios si el caso de uso los requiere
+            # Si tu RegistrarCobroUseCase() no tiene constructor, déjalo así,
+            # pero usualmente se inyectan como los otros.
             uc = RegistrarCobroUseCase()
+
             resultado = uc.ejecutar(
                 factura_id=serializer.validated_data['factura_id'],
                 lista_pagos=serializer.validated_data['pagos']
@@ -259,7 +400,7 @@ class CobroViewSet(viewsets.ViewSet):
         except (EntityNotFoundException, BusinessRuleException) as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            return Response({"error": f"Error interno: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # =============================================================================
@@ -278,9 +419,9 @@ class EnviarFacturaSRIAPIView(APIView):
         serializer = EnviarFacturaSRISerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
+
         factura_id = serializer.validated_data['factura_id']
-        
+
         return Response({
             "mensaje": "Funcionalidad de reintento pendiente de conectar al Caso de Uso",
             "factura_id": factura_id,
@@ -290,11 +431,13 @@ class EnviarFacturaSRIAPIView(APIView):
 
 class ConsultarAutorizacionAPIView(APIView):
     """
-    Consulta el estado de una autorización en el SRI mediante la Clave de Acceso.
+    Consulta el estado en el SRI y ACTUALIZA la base de datos local.
+    Ideal para resolver estados 'EN PROCESAMIENTO' o 'PENDIENTE'.
     """
     @swagger_auto_schema(
+        operation_description="Consulta SRI por clave de acceso y sincroniza el estado local.",
         query_serializer=ConsultarAutorizacionSerializer,
-        responses={200: "Estado obtenido"}
+        responses={200: "Estado sincronizado"}
     )
     def get(self, request):
         serializer = ConsultarAutorizacionSerializer(data=request.query_params)
@@ -302,29 +445,94 @@ class ConsultarAutorizacionAPIView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         clave = serializer.validated_data['clave_acceso']
-        
+
         try:
             sri_service = DjangoSRIService()
+            # 1. Llamada real al SOAP del SRI
             respuesta = sri_service.consultar_autorizacion(clave)
-            
+# --- AGREGA ESTA LÍNEA PARA VER EL MENSAJE EN LA TERMINAL ---
+            print(f"DEBUG SRI RESPUESTA: {respuesta.estado} - {respuesta.mensaje_error}")
+        # ------------------------------------------------------------
+            # 2. Si el SRI dice que ya está AUTORIZADO, actualizamos nuestra BD
+            if respuesta.estado == "AUTORIZADO":
+                # Buscamos la factura que tiene esa clave
+                factura_db = FacturaModel.objects.filter(clave_acceso_sri=clave).first()
+                if factura_db:
+                    factura_db.estado_sri = "AUTORIZADO"
+                    factura_db.xml_autorizado_sri = respuesta.xml_respuesta
+                    # Si ya está autorizado, nos aseguramos que el pago esté en firme
+                    factura_db.estado = "PAGADA"
+                    factura_db.save()
+
             return Response({
                 "clave_acceso": clave,
                 "estado": respuesta.estado,
-                "mensaje": respuesta.mensaje_error or "Autorizado exitosamente",
-                "xml_respuesta": respuesta.xml_respuesta
+                "mensaje": "Estado actualizado en el sistema" if respuesta.exito else "El SRI aún no autoriza el documento.",
+                "detalles": respuesta.mensaje_error,
+                "xml_respuesta": respuesta.xml_respuesta if respuesta.exito else None
             }, status=status.HTTP_200_OK)
-            
+
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": f"Error de conexión con SRI: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class MisFacturasAPIView(APIView):
-    permission_classes = [IsAuthenticated] 
+    """
+    Endpoint para que el socio logueado consulte su propio historial.
+    """
+    permission_classes = [IsAuthenticated]
 
-    @swagger_auto_schema(responses={200: "Lista de facturas"})
+    @swagger_auto_schema(
+        operation_description="Retorna el historial de facturas del socio autenticado.",
+        responses={200: "Lista de facturas con detalles de consumo"}
+    )
     def get(self, request):
-        return Response({
-            "mensaje": "Historial de facturas (Pendiente de implementación final)",
-            "usuario": request.user.username,
-            "facturas": []
-        }, status=status.HTTP_200_OK)
+        try:
+            # 1. Buscamos las facturas asociadas a la cédula del usuario logueado
+            # Nota: Usamos select_related para traer los datos del medidor y lectura en una sola consulta
+            facturas_queryset = FacturaModel.objects.select_related(
+                'socio', 'medidor', 'lectura'
+            ).filter(
+                socio__cedula=request.user.username  # Asumiendo que el username es la cédula
+            ).order_by('-fecha_emision')
+
+            # 2. Construimos la respuesta manual compatible con el map de tu Angular
+            data = []
+            for f in facturas_queryset:
+                # Lógica para el detalle de consumo
+                detalle_obj = None
+                if f.lectura:
+                    detalle_obj = {
+                        "lectura_anterior": float(f.lectura.lectura_anterior),
+                        "lectura_actual": float(f.lectura.valor),
+                        "consumo_total": float(f.lectura.consumo_del_mes),
+                        "costo_base": 3.00  # O la lógica de costo que manejes
+                    }
+
+                data.append({
+                    "id": f.id,
+                    "fecha_emision": f.fecha_emision.strftime('%Y-%m-%d'),
+                    "fecha_vencimiento": f.fecha_vencimiento.strftime('%Y-%m-%d'),
+                    "total": str(f.total),
+                    "estado": f.estado,
+                    "clave_acceso_sri": f.clave_acceso_sri,
+                    "socio": {
+                        "nombres": f.socio.nombres,
+                        "apellidos": f.socio.apellidos,
+                        "cedula": f.socio.cedula,
+                        "direccion": f.socio.direccion
+                    },
+                    "detalle": detalle_obj
+                })
+
+            return Response({
+                "mensaje": "Historial recuperado",
+                "usuario": request.user.username,
+                "facturas": data
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({
+                "error": f"Error al recuperar historial: {str(e)}",
+                "facturas": []
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -1,5 +1,6 @@
 # adapters/api/views/medidor_views.py
 from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, BasePermission, IsAdminUser
 from drf_yasg.utils import swagger_auto_schema
@@ -8,7 +9,7 @@ from drf_yasg import openapi
 # --- CAPA DE INFRAESTRUCTURA ---
 from adapters.infrastructure.repositories.django_medidor_repository import DjangoMedidorRepository
 from adapters.infrastructure.repositories.django_terreno_repository import DjangoTerrenoRepository
-
+from adapters.infrastructure.models import MedidorModel
 # --- CAPA DE PRESENTACIÓN ---
 from adapters.api.serializers.medidor_serializers import (
     MedidorSerializer,
@@ -47,7 +48,7 @@ class IsAdminOrOperador(BasePermission):
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
-            
+
         # Si es método de lectura segura (GET, HEAD, OPTIONS), dejamos pasar
         # (El filtro de datos se hará dentro de list/retrieve)
         if request.method in ['GET', 'HEAD', 'OPTIONS']:
@@ -56,7 +57,7 @@ class IsAdminOrOperador(BasePermission):
         # Para escribir (POST, PUT, DELETE), verificamos ROL
         if request.user.is_staff or request.user.is_superuser:
             return True
-            
+
         if hasattr(request.user, 'perfil_socio') and request.user.perfil_socio:
             rol = str(request.user.perfil_socio.rol).upper()
             return rol in ['ADMIN', 'OPERADOR', 'TESORERO']
@@ -107,6 +108,38 @@ class MedidorViewSet(viewsets.ViewSet):
             medidores = medidores_filtrados
 
         serializer = MedidorSerializer(medidores, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    # ======================================================
+    # PLANILLA DE LECTURAS (CORREGIDO - FILTRO REAL EN BD)
+    # ======================================================
+    @action(detail=False, methods=['get'], url_path='planilla-lecturas')
+    def planilla_lecturas(self, request):
+        """
+        Devuelve los medidores ACTIVOS filtrados por Barrio directamente desde la BD.
+        """
+        # 1. Obtenemos el parámetro del filtro
+        barrio_param = request.query_params.get('barrio')
+
+        # 2. QuerySet Base: Traer solo medidores ACTIVOS
+        # Usamos el Modelo directamente para aprovechar el motor de base de datos
+        queryset = MedidorModel.objects.filter(estado='ACTIVO')
+
+        # 3. Filtro Inteligente por Barrio
+        if barrio_param and barrio_param != 'null' and barrio_param != '':
+            # Django ORM permite navegar las relaciones con doble guion bajo "__"
+            # terreno__barrio__nombre__iexact significa:
+            # "Entra al Terreno, luego al Barrio, busca el Nombre (insensible a mayúsculas/minúsculas)"
+            queryset = queryset.filter(terreno__barrio__nombre__iexact=barrio_param.strip())
+
+        # 4. Optimizamos la consulta para traer los datos relacionados de una sola vez
+        # (select_related evita que el sistema haga 100 consultas si hay 100 medidores)
+        queryset = queryset.select_related('terreno', 'terreno__socio')
+
+        # 5. Serializamos
+        # El serializer funciona igual de bien con Modelos que con Entidades
+        serializer = MedidorSerializer(queryset, many=True)
+
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     # ======================================================
@@ -188,3 +221,29 @@ class MedidorViewSet(viewsets.ViewSet):
             return Response(status=status.HTTP_204_NO_CONTENT)
         except MedidorNoEncontradoError as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+
+        # ======================================================
+    # OBTENER MI MEDIDOR (Para el panel del Socio)
+    # ======================================================
+    @action(detail=False, methods=['get'], url_path='mi-medidor', permission_classes=[IsAuthenticated])
+    def mi_medidor(self, request):
+        """
+        Endpoint exclusivo para que el socio logueado vea su medidor.
+        """
+        user = request.user
+
+        # 1. Buscamos el medidor usando el Modelo directamente para mayor seguridad
+        # Navegamos: Medidor -> Terreno -> Socio -> Usuario
+        medidor = MedidorModel.objects.filter(
+            terreno__socio__usuario_id=user.id
+        ).select_related('terreno', 'terreno__socio', 'terreno__barrio').first()
+
+        if not medidor:
+            return Response(
+                {"error": "No tienes un medidor asignado a tu cuenta de usuario."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # 2. Usamos tu serializer existente
+        serializer = MedidorSerializer(medidor)
+        return Response(serializer.data, status=status.HTTP_200_OK)

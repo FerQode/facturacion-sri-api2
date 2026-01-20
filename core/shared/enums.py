@@ -6,6 +6,7 @@ class EstadoFactura(Enum):
     Representa el estado de una factura.
     """
     PENDIENTE = 'PENDIENTE'
+    POR_VALIDAR = 'POR_VALIDAR'
     PAGADA = 'PAGADA'
     ANULADA = 'ANULADA'
 

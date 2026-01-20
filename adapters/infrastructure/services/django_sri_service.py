@@ -18,7 +18,7 @@ import zeep
 # Core (Clean Architecture)
 from core.interfaces.services import ISRIService, SRIAuthData, SRIResponse
 from core.domain.factura import Factura
-from core.domain.socio import Socio 
+from core.domain.socio import Socio
 
 logger = logging.getLogger(__name__)
 
@@ -37,23 +37,23 @@ class DjangoSRIService(ISRIService):
                 raise ValueError("SRI_FIRMA_PATH no está configurado en settings.")
 
             self.auth = SRIAuthData(
-                firma_path=str(settings.SRI_FIRMA_PATH), 
+                firma_path=str(settings.SRI_FIRMA_PATH),
                 firma_pass=settings.SRI_FIRMA_PASS,
                 sri_url_recepcion=settings.SRI_URL_RECEPCION,
                 sri_url_autorizacion=settings.SRI_URL_AUTORIZACION
             )
-            
+
             # Inicializamos clientes SOAP (Zeep es moderno y maneja bien WSDLs del SRI)
             self.soap_client_recepcion = zeep.Client(self.auth.sri_url_recepcion)
             self.soap_client_autorizacion = zeep.Client(self.auth.sri_url_autorizacion)
-            
+
             # Ruta absoluta al JAR de firma (Basado en tu estructura de carpetas)
             # facturacion-sri-api2/adapters/infrastructure/files/jar/sri.jar
             self.jar_path = os.path.join(
-                settings.BASE_DIR, 
+                settings.BASE_DIR,
                 'adapters', 'infrastructure', 'files', 'jar', 'sri.jar'
             )
-            
+
             if not os.path.exists(self.jar_path):
                 logger.warning(f"⚠️ ADVERTENCIA: No se encuentra sri.jar en: {self.jar_path}")
 
@@ -62,7 +62,7 @@ class DjangoSRIService(ISRIService):
             raise e
 
     # --- 1. LÓGICA DE CLAVES (Módulo 11) ---
-    
+
     def _compute_mod11(self, pass_key_48: str) -> str:
         """Algoritmo oficial del SRI para dígito verificador (Portado del Proyecto A)"""
         if len(pass_key_48) > 48:
@@ -78,32 +78,32 @@ class DjangoSRIService(ISRIService):
             number = 1
         return str(number)
 
-    def _generar_clave_acceso(self, emisor_ruc: str, fecha_emision: datetime.date, nro_factura: str) -> str:
+    def generar_clave_acceso(self, emisor_ruc: str, fecha_emision: datetime.date, nro_factura: str) -> str:
         """Genera la clave de acceso de 49 dígitos"""
         fecha = fecha_emision.strftime('%d%m%Y')
         tipo_comprobante = "01"  # Factura
         ruc = emisor_ruc
         ambiente = str(settings.SRI_AMBIENTE) # 1: Pruebas, 2: Producción
-        
+
         # Serie: Estab + Punto Emisión
         serie = f"{settings.SRI_SERIE_ESTABLECIMIENTO}{settings.SRI_SERIE_PUNTO_EMISION}"
         secuencial = nro_factura.zfill(9)
-        
+
         # Código numérico aleatorio (8 dígitos)
         codigo_numerico = ''.join(random.choices("0123456789", k=8))
         tipo_emision = "1" # Normal
-        
+
         # Primeros 48 dígitos
         clave_48 = f"{fecha}{tipo_comprobante}{ruc}{ambiente}{serie}{secuencial}{codigo_numerico}{tipo_emision}"
-        
+
         # Dígito verificador
         digito_verificador = self._compute_mod11(clave_48)
-        
+
         clave_acceso = f"{clave_48}{digito_verificador}"
-        
+
         if len(clave_acceso) != 49:
             raise ValueError(f"Error generando clave acceso. Longitud obtenida: {len(clave_acceso)}")
-            
+
         return clave_acceso
 
     # --- 2. GENERACIÓN XML ---
@@ -112,17 +112,21 @@ class DjangoSRIService(ISRIService):
         """Construye el XML v1.1.0 usando lxml"""
         try:
             emisor_ruc = settings.SRI_EMISOR_RUC
-            nro_factura_secuencial = str(factura.id) # Asegurar que sea string
-            
-            clave_acceso = self._generar_clave_acceso(
-                emisor_ruc=emisor_ruc,
-                fecha_emision=factura.fecha_emision,
-                nro_factura=nro_factura_secuencial
+            numero_base = 1000 + int(factura.id)
+            nro_factura_secuencial = str(numero_base)
+
+            if factura.sri_clave_acceso:
+                clave_acceso = factura.sri_clave_acceso
+            else:
+                clave_acceso = self.generar_clave_acceso(
+                    emisor_ruc=emisor_ruc,
+                    fecha_emision=factura.fecha_emision,
+                    nro_factura=str(numero_base)
             )
 
             # Nodo Raíz
             xml_factura = etree.Element("factura", id="comprobante", version="1.1.0")
-            
+
             # Info Tributaria
             info_tributaria = etree.SubElement(xml_factura, "infoTributaria")
             etree.SubElement(info_tributaria, "ambiente").text = str(settings.SRI_AMBIENTE)
@@ -177,7 +181,7 @@ class DjangoSRIService(ISRIService):
                 etree.SubElement(detalle_xml, "precioUnitario").text = f"{detalle_entidad.precio_unitario:.4f}"
                 etree.SubElement(detalle_xml, "descuento").text = "0.00"
                 etree.SubElement(detalle_xml, "precioTotalSinImpuesto").text = f"{detalle_entidad.subtotal:.2f}"
-                
+
                 impuestos_detalle = etree.SubElement(detalle_xml, "impuestos")
                 impuesto_detalle = etree.SubElement(impuestos_detalle, "impuesto")
                 etree.SubElement(impuesto_detalle, "codigo").text = "2"
@@ -190,7 +194,7 @@ class DjangoSRIService(ISRIService):
             xml_bytes = etree.tostring(xml_factura, encoding="UTF-8", xml_declaration=True, pretty_print=False)
             # Reemplazar comillas simples por dobles (SRI a veces molesta con esto)
             xml_str = xml_bytes.decode("utf-8").replace("'", '"')
-            
+
             return xml_str, clave_acceso
 
         except Exception as e:
@@ -204,35 +208,35 @@ class DjangoSRIService(ISRIService):
         Ejecuta el archivo .jar para firmar el XML.
         """
         logger.info("Iniciando proceso de firma con Java...")
-        
+
         # 1. Crear archivo temporal para el XML sin firma
         with NamedTemporaryFile(suffix='.xml', delete=False) as temp_input:
             temp_input.write(xml_string.encode('utf-8'))
             temp_input_path = temp_input.name
-        
+
         # El JAR guarda el output en la misma carpeta que el input, o podemos definir nombre
         # El Proyecto A usaba: [java, -jar, jar, p12, pass, xml_input, path_base, nombre_salida]
-        
+
         nombre_xml_salida = f"{clave_acceso}_signed.xml"
         # Directorio temporal donde se guardará el firmado
-        output_dir = os.path.dirname(temp_input_path) 
+        output_dir = os.path.dirname(temp_input_path)
         path_xml_firmado = os.path.join(output_dir, nombre_xml_salida)
 
         try:
             # Comando exacto para el JAR (Adaptado de sri.py del Proy A)
             commands = [
-                'java', 
-                '-jar', self.jar_path, 
-                self.auth.firma_path, 
-                self.auth.firma_pass, 
-                temp_input_path, 
-                output_dir, 
+                'java',
+                '-jar', self.jar_path,
+                self.auth.firma_path,
+                self.auth.firma_pass,
+                temp_input_path,
+                output_dir,
                 nombre_xml_salida
             ]
-            
+
             # Ejecutar Java
             result = subprocess.run(commands, capture_output=True, text=True)
-            
+
             if result.returncode != 0:
                 logger.error(f"Error Java STDERR: {result.stderr}")
                 logger.error(f"Error Java STDOUT: {result.stdout}")
@@ -273,9 +277,10 @@ class DjangoSRIService(ISRIService):
 
     def _parsear_respuesta(self, response, clave_acceso, xml_enviado):
         # Mapeo de la respuesta Zeep a nuestra Entidad SRIResponse
+        print(f"DEBUG SRI - Respuesta Completa: {response}")
         try:
             estado = response.estado # RECIBIDA / DEVUELTA
-            
+
             if estado == 'RECIBIDA':
                 return SRIResponse(
                     exito=True, autorizacion_id=clave_acceso, estado=estado,
@@ -290,7 +295,7 @@ class DjangoSRIService(ISRIService):
                         mensajes.append(f"{m.mensaje} ({getattr(m, 'informacionAdicional', '')})")
                 except:
                     mensajes.append("Error desconocido al parsear detalles.")
-                
+
                 return SRIResponse(
                     exito=False, autorizacion_id=clave_acceso, estado=estado,
                     mensaje_error=" | ".join(mensajes), xml_enviado=xml_enviado, xml_respuesta=str(response)
@@ -307,13 +312,13 @@ class DjangoSRIService(ISRIService):
         try:
             # 1. Generar
             xml_sin_firma, clave_acceso = self._generar_xml_factura(factura, socio)
-            
+
             # 2. Firmar (JAVA)
             xml_firmado = self._firmar_xml_java(xml_sin_firma, clave_acceso)
-            
+
             # 3. Enviar
             soap_response = self._enviar_comprobante_al_sri(xml_firmado)
-            
+
             # 4. Parsear
             return self._parsear_respuesta(soap_response, clave_acceso, xml_firmado)
 

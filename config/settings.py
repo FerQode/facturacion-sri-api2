@@ -52,13 +52,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
+
     # --- Apps de Terceros ---
     'rest_framework',           # El motor de la API
     'rest_framework_simplejwt', # Autenticación por Tokens (JWT)
     'corsheaders',              # Permite que Angular/React/Vue consuman la API
     'drf_yasg',                 # Documentación automática (Swagger)
-    
+
     # --- Módulos de Arquitectura Limpia (Tu Tesis) ---
     # Registramos los adaptadores para que Django detecte modelos, comandos y admin.
     'adapters.api.apps.ApiConfig',
@@ -72,11 +72,11 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    
-    # ¡IMPORTANTE! CorsMiddleware debe ir lo más arriba posible, 
+
+    # ¡IMPORTANTE! CorsMiddleware debe ir lo más arriba posible,
     # antes de CommonMiddleware
     'corsheaders.middleware.CorsMiddleware',
-    
+
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -139,7 +139,7 @@ LANGUAGE_CODE = 'es-ec'  # Español de Ecuador
 
 # UTC es el estándar para guardar en BDD (recomendado)
 # Django convertirá a hora local al mostrarlo.
-TIME_ZONE = 'America/Guayaquil' 
+TIME_ZONE = 'America/Guayaquil'
 
 USE_I18N = True
 USE_TZ = True # ¡Esto es lo importante! Activa el soporte de zonas horarias
@@ -184,7 +184,7 @@ SIMPLE_JWT = {
 # ==============================================================================
 
 # En desarrollo permitimos todo. En producción, especifica tu dominio.
-CORS_ALLOW_ALL_ORIGINS = True 
+CORS_ALLOW_ALL_ORIGINS = True
 
 
 # ==============================================================================
@@ -195,12 +195,12 @@ CORS_ALLOW_ALL_ORIGINS = True
 try:
     # A. Credenciales
     SRI_FIRMA_PASS = os.getenv('SRI_FIRMA_PASS')
-    
+
     # B. Rutas de Archivos (Clave para tu Tesis)
     # Definimos dónde Django debe buscar el archivo .p12 y el .jar
     # Se recomienda crear una carpeta 'secrets' en la raíz para el .p12
-    SRI_FIRMA_PATH = BASE_DIR / 'secrets' / 'el_arbolito.p12' 
-    
+    SRI_FIRMA_PATH = BASE_DIR / 'secrets' / 'el_arbolito.p12'
+
     # Ruta al JAR que firma (Extraída del proyecto A)
     SRI_JAR_PATH = BASE_DIR / 'adapters' / 'infrastructure' / 'files' / 'jar' / 'sri.jar'
 
@@ -209,7 +209,7 @@ try:
     SRI_EMISOR_RAZON_SOCIAL = os.getenv('SRI_EMISOR_RAZON_SOCIAL')
     SRI_EMISOR_DIRECCION_MATRIZ = os.getenv('SRI_EMISOR_DIRECCION_MATRIZ')
     SRI_NOMBRE_COMERCIAL = os.getenv('SRI_NOMBRE_COMERCIAL')
-    
+
     # D. Configuración Técnica
     SRI_SERIE_ESTABLECIMIENTO = os.getenv('SRI_SERIE_ESTABLECIMIENTO')
     SRI_SERIE_PUNTO_EMISION = os.getenv('SRI_SERIE_PUNTO_EMISION')
@@ -222,7 +222,7 @@ try:
 
     # --- VALIDACIÓN DE INICIO (Fail Fast) ---
     # El sistema no iniciará si faltan archivos críticos.
-    
+
     if not SRI_FIRMA_PASS:
         print("⚠️ ADVERTENCIA SRI: Variable SRI_FIRMA_PASS no definida en .env")
 
@@ -235,7 +235,7 @@ try:
         if not SRI_FIRMA_PATH.exists():
             print(f"❌ ERROR CRÍTICO SRI: No se encuentra el archivo de firma en: {SRI_FIRMA_PATH}")
             print("   -> Por favor coloca tu archivo .p12 en la carpeta 'secrets/' de la raíz.")
-        
+
         if not SRI_JAR_PATH.exists():
             print(f"❌ ERROR CRÍTICO SRI: No se encuentra el archivo sri.jar en: {SRI_JAR_PATH}")
             print("   -> Por favor copia el .jar del Proyecto A a esa ruta.")
@@ -255,11 +255,15 @@ EMAIL_USE_TLS = True
 
 # Credenciales leídas del archivo .env para seguridad
 # Asegúrate de generar una "Contraseña de Aplicación" en tu cuenta Google
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER') 
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD') 
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 
 # Dirección por defecto que aparecerá en "De:"
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
 
 if not EMAIL_HOST_USER or not EMAIL_HOST_PASSWORD:
     print("⚠️ ADVERTENCIA EMAIL: Credenciales de correo no configuradas en .env (EMAIL_HOST_USER / EMAIL_HOST_PASSWORD)")
+
+# Al final de tu settings.py
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')

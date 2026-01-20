@@ -16,8 +16,8 @@ from core.domain.medidor import Medidor  # <--- ¡AQUÍ ESTÁ LA CORRECCIÓN! �
 
 # --- Core: Excepciones ---
 from core.shared.exceptions import (
-    EntityNotFoundException, 
-    BusinessRuleException, 
+    EntityNotFoundException,
+    BusinessRuleException,
     MedidorDuplicadoError
 )
 
@@ -27,10 +27,10 @@ from adapters.infrastructure.repositories.django_medidor_repository import Djang
 from adapters.infrastructure.repositories.django_socio_repository import DjangoSocioRepository
 from adapters.infrastructure.repositories.django_barrio_repository import DjangoBarrioRepository
 from adapters.infrastructure.repositories.django_lectura_repository import DjangoLecturaRepository
-
+from adapters.infrastructure.repositories.django_servicio_repository import DjangoServicioRepository
 # --- Serializers ---
 from adapters.api.serializers.terreno_serializers import (
-    TerrenoRegistroSerializer, 
+    TerrenoRegistroSerializer,
     TerrenoActualizacionSerializer
 )
 # Necesitamos importar el modelo Medidor para actualizarlo manualmente si es necesario
@@ -47,17 +47,20 @@ class TerrenoViewSet(viewsets.ViewSet):
             "medidor": DjangoMedidorRepository(),
             "socio": DjangoSocioRepository(),
             "barrio": DjangoBarrioRepository(),
-            "lectura": DjangoLecturaRepository()
+            "lectura": DjangoLecturaRepository(),
+            "servicio": DjangoServicioRepository()  # <--- AGREGA ESTA LÍNEA ✅
         }
 
     # =================================================================
     # 1. CREAR (POST)
     # =================================================================
+    # adapters/api/views/terreno_views.py
+
     @swagger_auto_schema(request_body=TerrenoRegistroSerializer)
     def create(self, request):
-        serializer = TerrenoRegistroSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer_in = TerrenoRegistroSerializer(data=request.data)
+        if not serializer_in.is_valid():
+            return Response(serializer_in.errors, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             repos = self._get_repositories()
@@ -65,18 +68,32 @@ class TerrenoViewSet(viewsets.ViewSet):
                 terreno_repo=repos['terreno'],
                 medidor_repo=repos['medidor'],
                 socio_repo=repos['socio'],
-                barrio_repo=repos['barrio']
+                barrio_repo=repos['barrio'],
+                servicio_repo=repos['servicio']
             )
-            terreno_creado = use_case.ejecutar(serializer.to_dto())
-            return Response({
-                "mensaje": "Terreno registrado correctamente",
-                "id": terreno_creado.id,
-                "direccion": terreno_creado.direccion
-            }, status=status.HTTP_201_CREATED)
-        except (EntityNotFoundException, BusinessRuleException, MedidorDuplicadoError) as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 1. Se guarda en la BD (Aquí es donde confirmas que sí aparece en MySQL)
+            terreno_entidad = use_case.ejecutar(serializer_in.to_dto())
+
+            # 2. ✅ SOLUCIÓN AL 500: Recuperar el modelo de infraestructura con relaciones
+            # El Serializer de salida necesita los nombres del socio y barrio
+            from adapters.infrastructure.models import TerrenoModel
+            from adapters.api.serializers.terreno_serializers import TerrenoLecturaSerializer
+
+            terreno_db = TerrenoModel.objects.select_related('socio', 'barrio').get(id=terreno_entidad.id)
+
+            # 3. ✅ RESPUESTA COMPLETA: Esto detiene el "loading" en Angular
+            serializer_out = TerrenoLecturaSerializer(terreno_db)
+            return Response(serializer_out.data, status=status.HTTP_201_CREATED)
+
         except Exception as e:
-            return Response({"error": f"Error interno: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            # ✅ IMPORTANTE: Esto captura cualquier fallo y lo muestra en consola
+            import logging
+            logging.error(f"ERROR EN CREACIÓN DE TERRENO: {str(e)}")
+            return Response(
+                {"error": f"Error interno al procesar respuesta: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     # =================================================================
     # 2. LISTAR (GET)
@@ -94,7 +111,7 @@ class TerrenoViewSet(viewsets.ViewSet):
 
         socio_id = request.query_params.get('socio_id')
         barrio_id = request.query_params.get('barrio_id')
-        
+
         terrenos = []
         if socio_id:
             terrenos = repo_terreno.list_by_socio_id(int(socio_id))
@@ -115,7 +132,7 @@ class TerrenoViewSet(viewsets.ViewSet):
                 "nombre_barrio": t.nombre_barrio if hasattr(t, 'nombre_barrio') else "N/A",
                 "es_cometida_activa": t.es_cometida_activa,
                 "socio_id": t.socio_id,
-                
+
                 "barrio_id": t.barrio_id, # ID para edición
 
                 "tiene_medidor": True if medidor else False,
@@ -142,7 +159,7 @@ class TerrenoViewSet(viewsets.ViewSet):
             "direccion": terreno.direccion,
             "barrio": {
                 "id": terreno.barrio_id,
-                "nombre": getattr(terreno, 'nombre_barrio', '') 
+                "nombre": getattr(terreno, 'nombre_barrio', '')
             },
             "estado_servicio": "ACTIVO" if terreno.es_cometida_activa else "SUSPENDIDO",
             "medidor": None
@@ -156,7 +173,7 @@ class TerrenoViewSet(viewsets.ViewSet):
                 "estado": medidor.estado,
                 "lectura_inicial": medidor.lectura_inicial
             }
-        
+
         return Response(response, status=status.HTTP_200_OK)
 
     # =================================================================
@@ -167,7 +184,7 @@ class TerrenoViewSet(viewsets.ViewSet):
         serializer = TerrenoActualizacionSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        
+
         repos = self._get_repositories()
         repo_terreno = repos['terreno']
         repo_medidor = repos['medidor']
@@ -177,7 +194,7 @@ class TerrenoViewSet(viewsets.ViewSet):
              return Response({"error": "Terreno no encontrado"}, status=status.HTTP_404_NOT_FOUND)
 
         data = serializer.validated_data
-        
+
         # 1. Actualizar Datos del Terreno
         if 'direccion' in data: terreno.direccion = data['direccion']
         if 'barrio_id' in data: terreno.barrio_id = data['barrio_id']
@@ -188,10 +205,10 @@ class TerrenoViewSet(viewsets.ViewSet):
         # 2. Gestionar el Código del Medidor (Upsert: Actualizar o Crear)
         if 'codigo_medidor' in request.data:
             nuevo_codigo = request.data['codigo_medidor']
-            
+
             if nuevo_codigo:
                 medidor_actual = repo_medidor.get_by_terreno_id(terreno.id)
-                
+
                 if medidor_actual:
                     # CASO A: Ya tiene medidor -> Actualizamos el código
                     try:
@@ -208,8 +225,8 @@ class TerrenoViewSet(viewsets.ViewSet):
                             id=None,
                             terreno_id=terreno.id,
                             codigo=nuevo_codigo,
-                            marca="GENERICO",       
-                            lectura_inicial=0.0,    
+                            marca="GENERICO",
+                            lectura_inicial=0.0,
                             estado='ACTIVO'
                         )
                         repo_medidor.create(nuevo_medidor)
@@ -241,7 +258,7 @@ class TerrenoViewSet(viewsets.ViewSet):
         data = request.data
         repos = self._get_repositories()
         usuario_id = request.user.id if request.user and request.user.is_authenticated else 1
-        
+
         try:
             dto = ReemplazarMedidorDTO(
                 terreno_id=int(pk),
@@ -257,3 +274,17 @@ class TerrenoViewSet(viewsets.ViewSet):
             return Response({"mensaje": "Cambio registrado", "nuevo_codigo": nuevo_medidor.codigo}, status=200)
         except Exception as e:
             return Response({"error": str(e)}, status=400)
+
+        # =================================================================
+    # 6. ELIMINAR (DELETE)
+    # =================================================================
+    def destroy(self, request, pk=None):
+        repos = self._get_repositories()
+        repo_terreno = repos['terreno']
+
+        try:
+            # Antes de borrar, podrías validar si tiene facturas
+            repo_terreno.delete(int(pk))
+            return Response({"mensaje": "Terreno eliminado correctamente"}, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({"error": f"No se pudo eliminar: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)

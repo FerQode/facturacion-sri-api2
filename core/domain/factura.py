@@ -10,7 +10,7 @@ from core.domain.lectura import Lectura
 # --- CONSTANTES DE NEGOCIO ---
 TARIFA_BASE_M3: int = 120
 TARIFA_BASE_PRECIO: Decimal = Decimal("3.00")
-TARIFA_EXCEDENTE_PRECIO: Decimal = Decimal("0.50")
+TARIFA_EXCEDENTE_PRECIO: Decimal = Decimal("0.25")
 TARIFA_FIJA_SIN_MEDIDOR: Decimal = Decimal("5.00")
 
 @dataclass
@@ -31,13 +31,13 @@ class Factura:
     medidor_id: Optional[int]
     fecha_emision: date
     fecha_vencimiento: date
-    
+
     # Campos automáticos
     fecha_registro: datetime = field(default_factory=timezone.now)
-    
+
     estado: EstadoFactura = EstadoFactura.PENDIENTE
     lectura: Optional[Lectura] = None
-    
+
     detalles: List[DetalleFactura] = field(default_factory=list)
     subtotal: Decimal = Decimal("0.00")
     impuestos: Decimal = Decimal("0.00")
@@ -50,20 +50,20 @@ class Factura:
     sri_fecha_autorizacion: Optional[datetime] = None
     sri_xml_autorizado: Optional[str] = None
     sri_mensaje_error: Optional[str] = None
-    estado_sri: Optional[str] = None 
+    estado_sri: Optional[str] = None
 
     # --- LÓGICA DE NEGOCIO (CORREGIDA) ---
-    
+
     def calcular_total_con_medidor(self, consumo_m3: int):
         self.detalles.clear()
-        
+
         if consumo_m3 <= TARIFA_BASE_M3:
             # CASO A: Consumo dentro de la base (Tarifa Plana)
             # Se cobra 1 unidad de servicio, independientemente del volumen exacto
             self.detalles.append(DetalleFactura(
                 id=None,
                 concepto=f"Servicio de Agua Potable (Base hasta {TARIFA_BASE_M3} m³)",
-                cantidad=Decimal(1), 
+                cantidad=Decimal(1),
                 precio_unitario=TARIFA_BASE_PRECIO,
                 subtotal=TARIFA_BASE_PRECIO
             ))
@@ -71,7 +71,7 @@ class Factura:
         else:
             # CASO B: Consumo Excedente
             consumo_excedente = consumo_m3 - TARIFA_BASE_M3
-            
+
             # 1. Cobro la base completa como 1 unidad
             self.detalles.append(DetalleFactura(
                 id=None,
@@ -80,7 +80,7 @@ class Factura:
                 precio_unitario=TARIFA_BASE_PRECIO,
                 subtotal=TARIFA_BASE_PRECIO
             ))
-            
+
             # 2. Cobro el excedente por metro cúbico
             subtotal_excedente = Decimal(consumo_excedente) * TARIFA_EXCEDENTE_PRECIO
             self.detalles.append(DetalleFactura(
@@ -90,7 +90,7 @@ class Factura:
                 precio_unitario=TARIFA_EXCEDENTE_PRECIO,
                 subtotal=subtotal_excedente
             ))
-            
+
             self.subtotal = TARIFA_BASE_PRECIO + subtotal_excedente
 
         self.total = self.subtotal + self.impuestos

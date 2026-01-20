@@ -12,7 +12,8 @@ from .views import (
     barrio_views,
     terreno_views,
     multa_views,
-    servicio_agua_views # ✅ AGREGADO: Importamos la vista del Servicio de Agua
+    servicio_agua_views, # ✅ AGREGADO: Importamos la vista del Servicio de Agua
+    cobro_views
 )
 
 # ==============================================================================
@@ -47,7 +48,7 @@ router.register(r'facturas-gestion', factura_views.FacturaMasivaViewSet, basenam
 
 # 6. Cobros y Pagos (Caja)
 # Genera: POST /api/v1/cobros/registrar/
-router.register(r'cobros', factura_views.CobroViewSet, basename='cobros')
+router.register(r'cobros', cobro_views.CobroViewSet, basename='cobros')
 
 
 # ==============================================================================
@@ -55,32 +56,32 @@ router.register(r'cobros', factura_views.CobroViewSet, basename='cobros')
 # ==============================================================================
 
 urlpatterns = [
-    
+
     # --- Módulo de Facturación Individual & SRI ---
     # Endpoint transaccional para crear UNA factura específica desde lectura
     path(
-        'facturas/generar/', 
-        factura_views.GenerarFacturaAPIView.as_view(), 
+        'facturas/generar/',
+        factura_views.GenerarFacturaAPIView.as_view(),
         name='generar-factura'
     ),
-    
+
     # ✅ NUEVO: Generación Masiva para Tarifa Fija
     path(
-        'facturas/generar-fijas/', 
-        factura_views.GenerarFacturasFijasAPIView.as_view(), 
+        'facturas/generar-fijas/',
+        factura_views.GenerarFacturasFijasAPIView.as_view(),
         name='generar-facturas-fijas'
     ),
     # Reintento manual de envío al SRI
     path(
-        'facturas/enviar-sri/', 
-        factura_views.EnviarFacturaSRIAPIView.as_view(), 
+        'facturas/enviar-sri/',
+        factura_views.EnviarFacturaSRIAPIView.as_view(),
         name='enviar-factura-sri'
     ),
-    
+
     # Consulta de estado de documento
     path(
-        'facturas/consultar/', 
-        factura_views.ConsultarAutorizacionAPIView.as_view(), 
+        'facturas/consultar/',
+        factura_views.ConsultarAutorizacionAPIView.as_view(),
         name='consultar-autorizacion-sri'
     ),
 
@@ -90,7 +91,7 @@ urlpatterns = [
         factura_views.MisFacturasAPIView.as_view(),
         name='mis-facturas'
     ),
-    
+
     # --- Inclusión de las Rutas Automáticas del Router ---
     path('', include(router.urls)),
 ]

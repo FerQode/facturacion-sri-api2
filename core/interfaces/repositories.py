@@ -8,7 +8,7 @@ from core.domain.socio import Socio
 from core.domain.medidor import Medidor
 from core.domain.lectura import Lectura
 from core.domain.factura import Factura
-from core.domain.barrio import Barrio 
+from core.domain.barrio import Barrio
 from core.domain.terreno import Terreno
 from core.domain.multa import Multa  # ✅ IMPORTANTE: Agregada esta línea
 from core.shared.enums import EstadoFactura, RolUsuario
@@ -39,7 +39,7 @@ class ISocioRepository(ABC):
     def save(self, socio: Socio) -> Socio:
         """Guarda (crea) o actualiza un socio en la base de datos."""
         pass
-    
+
     @abstractmethod
     def get_by_usuario_id(self, usuario_id: int) -> Optional[Socio]:
         """Obtiene el perfil de socio vinculado a una cuenta de usuario (login)."""
@@ -70,7 +70,7 @@ class ITerrenoRepository(ABC):
     def list_by_barrio_id(self, barrio_id: int) -> List[Terreno]:
         """Filtra terrenos por ubicación geográfica (Barrio)."""
         pass
-    
+
     @abstractmethod
     def create(self, terreno: Terreno) -> Terreno:
         """Método explícito para crear un nuevo terreno."""
@@ -99,7 +99,7 @@ class IMedidorRepository(ABC):
     @abstractmethod
     def save(self, medidor: Medidor) -> Medidor:
         pass
-    
+
     @abstractmethod
     def create(self, medidor: Medidor) -> Medidor:
         pass
@@ -113,7 +113,7 @@ class IBarrioRepository(ABC):
     @abstractmethod
     def get_by_id(self, barrio_id: int) -> Optional[Barrio]:
         pass
-    
+
     @abstractmethod
     def get_by_nombre(self, nombre: str) -> Optional[Barrio]:
         pass
@@ -121,7 +121,7 @@ class IBarrioRepository(ABC):
     @abstractmethod
     def save(self, barrio: Barrio) -> Barrio:
         pass
-    
+
     @abstractmethod
     def delete(self, barrio_id: int) -> None:
         pass
@@ -132,7 +132,7 @@ class ILecturaRepository(ABC):
     def get_latest_by_medidor(self, medidor_id: int) -> Optional[Lectura]:
         """Obtiene la última lectura registrada para calcular el consumo del mes actual."""
         pass
-    
+
     @abstractmethod
     def get_by_id(self, lectura_id: int) -> Optional[Lectura]:
         pass
@@ -170,7 +170,7 @@ class IFacturaRepository(ABC):
         self, socio_id: int, fecha_inicio: date, fecha_fin: date
     ) -> List[Factura]:
         pass
-    
+
     @abstractmethod
     def list_by_socio(self, socio_id: int) -> List[Factura]:
         pass
@@ -228,4 +228,10 @@ class IAuthRepository(ABC):
 
     @abstractmethod
     def activar_usuario(self, user_id: int) -> None:
+        pass
+
+class IServicioRepository(ABC):
+    @abstractmethod
+    def create_automatico(self, terreno_id: int, socio_id: int, tipo: str, valor: float) -> None:
+        """Crea el vínculo de servicio (Fijo o Variable) para un terreno."""
         pass
