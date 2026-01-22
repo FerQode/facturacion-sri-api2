@@ -30,7 +30,14 @@ class Factura:
     socio_id: int
     medidor_id: Optional[int]
     fecha_emision: date
+    fecha_emision: date
     fecha_vencimiento: date
+    
+    # Periodo Fiscal
+    anio: int = 2025
+    mes: int = 1
+    
+    servicio_id: Optional[int] = None # Added for Tarifa Fija (Moved here to avoid default arg error)
 
     # Campos automáticos
     fecha_registro: datetime = field(default_factory=timezone.now)

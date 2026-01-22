@@ -10,6 +10,7 @@ from .factura_views import (
     MisFacturasAPIView
 )
 from .socio_views import SocioViewSet
+from .sri_views import SRIViewSet
 from .medidor_views import MedidorViewSet
 from .barrio_views import BarrioViewSet
 from .terreno_views import TerrenoViewSet

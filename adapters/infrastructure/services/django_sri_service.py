@@ -14,6 +14,8 @@ from pathlib import Path
 from django.conf import settings
 from lxml import etree
 import zeep
+from zeep.helpers import serialize_object
+import json
 
 # Core (Clean Architecture)
 from core.interfaces.services import ISRIService, SRIAuthData, SRIResponse
@@ -78,11 +80,11 @@ class DjangoSRIService(ISRIService):
             number = 1
         return str(number)
 
-    def generar_clave_acceso(self, emisor_ruc: str, fecha_emision: datetime.date, nro_factura: str) -> str:
+    def generar_clave_acceso(self, fecha_emision: datetime.date, nro_factura: str) -> str:
         """Genera la clave de acceso de 49 dígitos"""
         fecha = fecha_emision.strftime('%d%m%Y')
         tipo_comprobante = "01"  # Factura
-        ruc = emisor_ruc
+        ruc = settings.SRI_EMISOR_RUC # Configuración Centralizada
         ambiente = str(settings.SRI_AMBIENTE) # 1: Pruebas, 2: Producción
 
         # Serie: Estab + Punto Emisión
@@ -119,7 +121,6 @@ class DjangoSRIService(ISRIService):
                 clave_acceso = factura.sri_clave_acceso
             else:
                 clave_acceso = self.generar_clave_acceso(
-                    emisor_ruc=emisor_ruc,
                     fecha_emision=factura.fecha_emision,
                     nro_factura=str(numero_base)
             )
@@ -277,33 +278,71 @@ class DjangoSRIService(ISRIService):
 
     def _parsear_respuesta(self, response, clave_acceso, xml_enviado):
         # Mapeo de la respuesta Zeep a nuestra Entidad SRIResponse
-        print(f"DEBUG SRI - Respuesta Completa: {response}")
+        logger.info(f"DEBUG SRI - Estructura Respuesta: {response}")
+        
         try:
             estado = response.estado # RECIBIDA / DEVUELTA
+            mensajes = []
+
+            # Lógica recursiva/robusta para extraer mensajes de error/advertencia
+            try:
+                # La estructura puede variar, a veces es lista, a veces objeto único
+                comprobantes = getattr(response, 'comprobantes', None)
+                if comprobantes and hasattr(comprobantes, 'comprobante'):
+                    lista_comprobantes = comprobantes.comprobante
+                    # Iterar comprobantes (usualmente 1 en envío sincrono)
+                    for comp in lista_comprobantes:
+                        msgs = getattr(comp, 'mensajes', None)
+                        if msgs and hasattr(msgs, 'mensaje'):
+                            for m in msgs.mensaje:
+                                # Extraer campos clave
+                                texto = getattr(m, 'mensaje', 'Sin mensaje')
+                                info_ad = getattr(m, 'informacionAdicional', '')
+                                tipo = getattr(m, 'tipo', 'INFO')
+                                identificador = getattr(m, 'identificador', '')
+                                
+                                mensaje_formateado = f"[{tipo}] {texto}"
+                                if info_ad:
+                                    mensaje_formateado += f" ({info_ad})"
+                                if identificador:
+                                    mensaje_formateado += f" [ID:{identificador}]"
+                                
+                                mensajes.append(mensaje_formateado)
+            except Exception as e_msg:
+                mensajes.append(f"Error parseando detalles de mensajes: {str(e_msg)}")
+                # Fallback: intentar convertir a string todo el objeto response
+                mensajes.append(str(response))
+
+
+            # Serialización correcta a Dict (para que REST Framework lo renderice como JSON anidado)
+            try:
+                # serialize_object devuelve un dict estándar de Python (listas, dicts, int, etc.)
+                xml_response_dict = serialize_object(response)
+            except:
+                # Fallback: si falla, devolvemos un dict con el string
+                xml_response_dict = {"raw": str(response)}
 
             if estado == 'RECIBIDA':
                 return SRIResponse(
                     exito=True, autorizacion_id=clave_acceso, estado=estado,
-                    mensaje_error=None, xml_enviado=xml_enviado, xml_respuesta=str(response)
+                    mensaje_error=None, xml_enviado=xml_enviado, xml_respuesta=xml_response_dict
                 )
             else:
-                # Extraer mensajes de error
-                mensajes = []
-                try:
-                    lista_mensajes = response.comprobantes.comprobante[0].mensajes.mensaje
-                    for m in lista_mensajes:
-                        mensajes.append(f"{m.mensaje} ({getattr(m, 'informacionAdicional', '')})")
-                except:
-                    mensajes.append("Error desconocido al parsear detalles.")
-
+                # Estado DEVUELTA
+                mensaje_final = " | ".join(mensajes)
+                if not mensaje_final:
+                    mensaje_final = "Sin detalles de error (Revisar logs)"
+                    
                 return SRIResponse(
                     exito=False, autorizacion_id=clave_acceso, estado=estado,
-                    mensaje_error=" | ".join(mensajes), xml_enviado=xml_enviado, xml_respuesta=str(response)
+                    mensaje_error=mensaje_final, xml_enviado=xml_enviado, xml_respuesta=xml_response_dict
                 )
+
         except Exception as e:
+             logger.error(f"Error crítico parseando respuesta SRI: {e}")
              return SRIResponse(
-                exito=False, autorizacion_id=clave_acceso, estado="ERROR_PARSE",
-                mensaje_error=str(e), xml_enviado=xml_enviado, xml_respuesta=str(response)
+                exito=False, autorizacion_id=clave_acceso, estado="ERROR_PARSE_LOCAL",
+                mensaje_error=f"Excepción local: {str(e)}", xml_enviado=xml_enviado, xml_respuesta=str(response)
             )
 
     # --- MÉTODOS PÚBLICOS DE INTERFACE ---

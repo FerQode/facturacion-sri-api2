@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from datetime import date
@@ -33,6 +33,7 @@ from adapters.infrastructure.repositories.django_medidor_repository import Djang
 from adapters.infrastructure.repositories.django_socio_repository import DjangoSocioRepository
 from adapters.infrastructure.repositories.django_terreno_repository import DjangoTerrenoRepository
 from adapters.infrastructure.repositories.django_multa_repository import DjangoMultaRepository
+from adapters.infrastructure.repositories.django_servicio_repository import DjangoServicioRepository # ✅ NEW
 
 # --- Adapters: Modelos ---
 # ✅ MODIFICADO: Agregamos FacturaModel para consultar deudas directas
@@ -122,6 +123,7 @@ class GenerarFacturasFijasAPIView(APIView):
     Endpoint para ejecutar el proceso masivo de facturación para socios SIN medidor.
     Ideal para ejecutar al inicio de cada mes.
     """
+    permission_classes = [IsAuthenticated, IsAdminUser]
 
     @swagger_auto_schema(
         operation_description="Genera facturas masivas para todos los servicios de tipo FIJO activos.",
@@ -132,8 +134,25 @@ class GenerarFacturasFijasAPIView(APIView):
     )
     def post(self, request):
         try:
-            uc = GenerarFacturaFijaUseCase()
-            reporte = uc.ejecutar()
+            # ✅ Clean Architecture: Inyección de Dependencias Manual
+            factura_repo = DjangoFacturaRepository()
+            servicio_repo = DjangoServicioRepository()
+            
+            # Capturar parametros del body (Periodo Fiscal y Fecha Emision)
+            anio = request.data.get('anio')
+            mes = request.data.get('mes')
+            
+            # Fecha de Emision Legal (Opcional, por defecto hoy)
+            # Puede ser distinto al periodo fiscal (Ej: Facturo Diciembre en Enero)
+            fecha_emision_str = request.data.get('fecha_emision')
+            fecha_emision = date.fromisoformat(fecha_emision_str) if fecha_emision_str else None
+
+            uc = GenerarFacturaFijaUseCase(
+                factura_repo=factura_repo,
+                servicio_repo=servicio_repo
+            )
+            
+            reporte = uc.ejecutar(anio=anio, mes=mes, fecha_emision=fecha_emision)
             return Response(reporte, status=status.HTTP_200_OK)
 
         except Exception as e:
@@ -310,7 +329,14 @@ class FacturaMasivaViewSet(viewsets.ViewSet):
 
             # --- PASO B: FACTURAR ACOMETIDAS FIJAS (ADRIÁN) ---
             # Esto busca socios SIN medidor y les cobra los $3.00
-            uc_fija = GenerarFacturaFijaUseCase()
+            
+            # ✅ Clean Architecture: Inyección para Masiva también
+            servicio_repo = DjangoServicioRepository() # factura_repo ya existe arriba
+            
+            uc_fija = GenerarFacturaFijaUseCase(
+                factura_repo=factura_repo,
+                servicio_repo=servicio_repo
+            )
             reporte_fijas = uc_fija.ejecutar()
 
         # --- RESPUESTA ---

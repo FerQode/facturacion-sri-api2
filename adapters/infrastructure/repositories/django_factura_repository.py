@@ -1,208 +1,157 @@
-from datetime import date
-from typing import List, Optional
-from django.db import transaction
-
-# Interfaces y Dominio
+from typing import Optional
 from core.interfaces.repositories import IFacturaRepository
-from core.domain.factura import Factura, DetalleFactura
-from core.shared.enums import EstadoFactura
-
-# Modelos (Infraestructura)
-from adapters.infrastructure.models import FacturaModel, DetalleFacturaModel
+from core.domain.factura import Factura as FacturaEntity, DetalleFactura, EstadoFactura
+from core.domain.socio import Socio as SocioEntity, RolUsuario
+from adapters.infrastructure.models import FacturaModel
 
 class DjangoFacturaRepository(IFacturaRepository):
-    """
-    Implementación completa del Repositorio de Facturas.
-    Cumple estrictamente con IFacturaRepository.
-    """
-
-    # =================================================================
-    # 1. MAPPER (Traductor: DB -> Dominio)
-    # =================================================================
-    def _map_model_to_domain(self, model: FacturaModel) -> Factura:
-        """
-        Convierte un Modelo Django (BD) a una Entidad de Negocio (Dominio).
-        Protege contra errores de formato en Enums.
-        """
-        # 🛡️ Protección robusta para el Enum de Estado
+    
+    def obtener_por_id(self, id: int) -> Optional[FacturaEntity]:
         try:
-            # Intento 1: Conversión directa (ej: "PENDIENTE")
-            estado_enum = EstadoFactura(model.estado)
-        except (ValueError, TypeError):
-            try:
-                # Intento 2: Normalización (ej: "Pendiente" -> "PENDIENTE")
-                estado_enum = EstadoFactura(model.estado.upper())
-            except (ValueError, AttributeError):
-                # Fallback: Si el dato está corrupto, asumimos PENDIENTE por seguridad
-                estado_enum = EstadoFactura.PENDIENTE
+            # Obtenemos el modelo de ORM con relaciones optimizadas
+            f_db = FacturaModel.objects.select_related('socio', 'medidor').prefetch_related('detalles').get(id=id)
+            
+            # Mapeamos a Entidad de Dominio
+            factura_entity = self._mapear_a_dominio(f_db)
+            
+            # Enriquecemos con el objeto Socio (Pragmatismo para no romper dataclass original por ahora)
+            # Esto permite que el caso de uso acceda a datos del socio sin hacer queries
+            socio_entity = self._mapear_socio(f_db.socio)
+            setattr(factura_entity, 'socio_obj', socio_entity)
+            
+            return factura_entity
+        
+        except FacturaModel.DoesNotExist:
+            return None
 
-        # Construcción de la Entidad
-        factura = Factura(
-            id=model.id,
-            socio_id=model.socio_id,
-            medidor_id=model.medidor_id,
-            # No cargamos la entidad completa para evitar circularidad
-            lectura=None, 
+    def get_by_lectura_id(self, lectura_id: int) -> Optional[FacturaEntity]:
+        try:
+            f_db = FacturaModel.objects.filter(lectura_id=lectura_id).first()
+            if f_db:
+                return self._mapear_a_dominio(f_db)
+            return None
+        except Exception:
+            return None
+
+    def existe_factura_fija_mes(self, servicio_id: int, anio: int, mes: int) -> bool:
+        return FacturaModel.objects.filter(
+            servicio_id=servicio_id,
+            anio=anio,
+            mes=mes,
+            estado__in=[EstadoFactura.PENDIENTE.value, EstadoFactura.PAGADA.value]
+        ).exists()
+
+    def guardar(self, factura: FacturaEntity) -> None:
+        # Aquí actualizamos el registro en BD desde la Entidad
+        # Asumimos que la entidad tiene ID (es update)
+        if not factura.id:
+            # Creación de nueva factura
+            f_db = FacturaModel.objects.create(
+                socio_id=factura.socio_id,
+                servicio_id=factura.servicio_id,
+                medidor_id=factura.medidor_id,
+                lectura_id=factura.lectura.id if factura.lectura else None,
+                fecha_emision=factura.fecha_emision,
+                fecha_vencimiento=factura.fecha_vencimiento,
+                anio=factura.anio,
+                mes=factura.mes,
+                estado=factura.estado.value if hasattr(factura.estado, 'value') else factura.estado,
+                subtotal=factura.subtotal,
+                impuestos=factura.impuestos,
+                total=factura.total,
+                sri_ambiente=factura.sri_ambiente,
+                sri_tipo_emision=factura.sri_tipo_emision
+            )
+            factura.id = f_db.id # Actualizamos ID en dominio
             
-            fecha_emision=model.fecha_emision,
-            fecha_vencimiento=model.fecha_vencimiento,
+            from adapters.infrastructure.models import DetalleFacturaModel
+
+            for det in factura.detalles:
+                DetalleFacturaModel.objects.create(
+                    factura=f_db,
+                    concepto=det.concepto,
+                    cantidad=det.cantidad,
+                    precio_unitario=det.precio_unitario,
+                    subtotal=det.subtotal
+                )
             
-            # Django maneja Timezones (Aware), lo pasamos directo
-            fecha_registro=model.fecha_registro,
+            return
+
+        try:
+            f_db = FacturaModel.objects.get(id=factura.id)
             
-            estado=estado_enum,
+            # Actualizamos campos modificables por el Caso de Uso Concepto
+            f_db.estado = factura.estado.value if hasattr(factura.estado, 'value') else factura.estado
+            f_db.anio = factura.anio
+            f_db.mes = factura.mes
             
-            # Convertimos Decimal a float si el dominio lo requiere
-            subtotal=float(model.subtotal),
-            impuestos=float(model.impuestos),
-            total=float(model.total),
+            # Asociaciones (Lectura, Servicio)
+            if factura.servicio_id:
+                f_db.servicio_id = factura.servicio_id
             
             # Campos SRI
-            sri_clave_acceso=model.clave_acceso_sri,
-            estado_sri=model.estado_sri,
-            sri_mensaje_error=model.mensaje_error_sri 
+            f_db.sri_ambiente = factura.sri_ambiente
+            f_db.sri_tipo_emision = factura.sri_tipo_emision
+            f_db.clave_acceso_sri = factura.sri_clave_acceso
+            f_db.xml_autorizado_sri = factura.sri_xml_autorizado
+            f_db.mensaje_error_sri = factura.sri_mensaje_error
+            f_db.estado_sri = factura.estado_sri
+            if factura.sri_fecha_autorizacion:
+                f_db.fecha_autorizacion_sri = factura.sri_fecha_autorizacion
+
+            f_db.save()
+            
+        except FacturaModel.DoesNotExist:
+            raise ValueError(f"Factura {factura.id} no encontrada en DB para guardar.")
+
+    def _mapear_a_dominio(self, f_db: FacturaModel) -> FacturaEntity:
+        detalles_dominio = []
+        for det in f_db.detalles.all():
+            detalles_dominio.append(DetalleFactura(
+                id=det.id, concepto=det.concepto, cantidad=det.cantidad,
+                precio_unitario=det.precio_unitario, subtotal=det.subtotal
+            ))
+
+        return FacturaEntity(
+            id=f_db.id,
+            socio_id=f_db.socio.id,
+            servicio_id=f_db.servicio.id if f_db.servicio else None,
+            medidor_id=f_db.medidor.id if f_db.medidor else None,
+            fecha_emision=f_db.fecha_emision,
+            fecha_vencimiento=f_db.fecha_vencimiento,
+            anio=f_db.anio,
+            mes=f_db.mes,
+            estado=EstadoFactura(f_db.estado),
+            subtotal=f_db.subtotal,
+            impuestos=f_db.impuestos,
+            total=f_db.total,
+            detalles=detalles_dominio,
+            sri_ambiente=f_db.sri_ambiente,
+            sri_tipo_emision=f_db.sri_tipo_emision,
+            sri_clave_acceso=f_db.clave_acceso_sri,
+            sri_xml_autorizado=f_db.xml_autorizado_sri,
+            sri_mensaje_error=f_db.mensaje_error_sri,
+            estado_sri=f_db.estado_sri
+            # Fecha autorización se podría agregar si estuviera en el dataclass
         )
 
-        # Mapeo de Detalles (Nested Objects)
-        detalles_qs = getattr(model, 'detalles', None)
-        if detalles_qs:
-            factura.detalles = [
-                DetalleFactura(
-                    id=d.id,
-                    concepto=d.concepto,
-                    cantidad=float(d.cantidad),
-                    precio_unitario=float(d.precio_unitario),
-                    subtotal=float(d.subtotal)
-                ) for d in detalles_qs.all()
-            ]
-
-        return factura
-
-    # =================================================================
-    # 2. IMPLEMENTACIÓN DE INTERFAZ (Lectura)
-    # =================================================================
-    def get_by_id(self, factura_id: int) -> Optional[Factura]:
-        try:
-            # prefetch_related es CRÍTICO para rendimiento (evita N+1 queries)
-            model = FacturaModel.objects.prefetch_related('detalles').get(pk=factura_id)
-            return self._map_model_to_domain(model)
-        except FacturaModel.DoesNotExist:
-            return None
-
-    def get_by_clave_acceso(self, clave_acceso: str) -> Optional[Factura]:
-        try:
-            model = FacturaModel.objects.prefetch_related('detalles').get(clave_acceso_sri=clave_acceso)
-            return self._map_model_to_domain(model)
-        except FacturaModel.DoesNotExist:
-            return None
-
-    # ✅ IMPLEMENTADO: Método requerido por la interfaz
-    def get_by_lectura_id(self, lectura_id: int) -> Optional[Factura]:
-        """Busca si ya existe una factura asociada a una lectura."""
-        try:
-            model = FacturaModel.objects.prefetch_related('detalles').get(lectura_id=lectura_id)
-            return self._map_model_to_domain(model)
-        except FacturaModel.DoesNotExist:
-            return None
-
-    def list_by_socio(self, socio_id: int) -> List[Factura]:
-        models = FacturaModel.objects.prefetch_related('detalles').filter(socio_id=socio_id).order_by('-fecha_emision')
-        return [self._map_model_to_domain(m) for m in models]
-
-    # ✅ IMPLEMENTADO: Método requerido por la interfaz
-    def list_by_socio_and_date_range(self, socio_id: int, fecha_inicio: date, fecha_fin: date) -> List[Factura]:
-        """Lista facturas de un socio en un rango de fechas de emisión."""
-        models = FacturaModel.objects.prefetch_related('detalles').filter(
-            socio_id=socio_id,
-            fecha_emision__range=[fecha_inicio, fecha_fin]
-        ).order_by('-fecha_emision')
-        return [self._map_model_to_domain(m) for m in models]
-
-    # ✅ IMPLEMENTADO: Método requerido por la interfaz
-    def list_by_estado(self, estado: EstadoFactura) -> List[Factura]:
-        """Lista todas las facturas que coinciden con un estado específico."""
-        # Manejo seguro por si pasan el Enum o el string value
-        val = estado.value if hasattr(estado, 'value') else str(estado)
-        
-        models = FacturaModel.objects.prefetch_related('detalles').filter(
-            estado__iexact=val
-        ).order_by('-fecha_emision')
-        return [self._map_model_to_domain(m) for m in models]
-
-    def obtener_pendientes_por_socio(self, socio_id: int) -> List[Factura]:
-        """
-        Método especializado para la consulta de deuda.
-        Usa 'iexact' para ignorar mayúsculas/minúsculas en la búsqueda.
-        """
-        models = FacturaModel.objects.prefetch_related('detalles').filter(
-            socio_id=socio_id,
-            estado__iexact=EstadoFactura.PENDIENTE.value
-        ).order_by('fecha_emision')
-        return [self._map_model_to_domain(m) for m in models]
-
-    # =================================================================
-    # 3. IMPLEMENTACIÓN DE INTERFAZ (Escritura)
-    # =================================================================
-    @transaction.atomic 
-    def save(self, factura: Factura) -> Factura:
-        """
-        Guarda o actualiza una factura y sus detalles de forma atómica.
-        """
-        # Preparar diccionario de datos plano
-        model_data = {
-            'socio_id': factura.socio_id,
-            'medidor_id': factura.medidor_id,
-            'lectura_id': factura.lectura.id if factura.lectura else None,
-            
-            # Fechas
-            'fecha_emision': factura.fecha_emision,
-            'fecha_vencimiento': factura.fecha_vencimiento,
-            
-            # Estado y Montos
-            'estado': factura.estado.value if hasattr(factura.estado, 'value') else factura.estado,
-            'subtotal': factura.subtotal,
-            'impuestos': factura.impuestos,
-            'total': factura.total,
-            
-            # SRI
-            'clave_acceso_sri': getattr(factura, 'sri_clave_acceso', None),
-            'estado_sri': getattr(factura, 'estado_sri', None),
-            'mensaje_error_sri': getattr(factura, 'sri_mensaje_error', None),
-            'xml_autorizado_sri': getattr(factura, 'sri_xml_autorizado', None),
-            'fecha_autorizacion_sri': getattr(factura, 'sri_fecha_autorizacion', None),
-        }
-        
-        # Si la entidad tiene fecha_registro, la respetamos
-        if factura.fecha_registro:
-            model_data['fecha_registro'] = factura.fecha_registro
-
-        # 1. Guardar Cabecera (Update or Create)
-        if factura.id:
-            FacturaModel.objects.filter(pk=factura.id).update(**model_data)
-            factura_model = FacturaModel.objects.get(pk=factura.id)
-            
-            # Estrategia de reemplazo completo de detalles
-            if factura.detalles is not None:
-                factura_model.detalles.all().delete()
-        else:
-            factura_model = FacturaModel.objects.create(**model_data)
-
-        # 2. Guardar Detalles (Bulk Create para rendimiento)
-        if factura.detalles:
-            detalles_a_crear = [
-                DetalleFacturaModel(
-                    factura=factura_model,
-                    concepto=d.concepto,
-                    cantidad=d.cantidad,
-                    precio_unitario=d.precio_unitario,
-                    subtotal=d.subtotal
-                ) for d in factura.detalles
-            ]
-            DetalleFacturaModel.objects.bulk_create(detalles_a_crear)
-
-        # Actualizamos el ID de la entidad y retornamos mapeado
-        factura.id = factura_model.id
-        # Recargamos con prefetch para asegurar que los detalles vienen en el retorno
-        factura_model_completa = FacturaModel.objects.prefetch_related('detalles').get(pk=factura_model.id)
-        
-        return self._map_model_to_domain(factura_model_completa)
+    def _mapear_socio(self, socio_db) -> SocioEntity:
+        # Mapper auxiliar para el socio
+        direccion_safe = socio_db.direccion if socio_db.direccion else "S/N"
+        return SocioEntity(
+            id=socio_db.id,
+            cedula=socio_db.cedula,
+            nombres=socio_db.nombres,
+            apellidos=socio_db.apellidos,
+            email=socio_db.email,
+            telefono=socio_db.telefono,
+            barrio_id=socio_db.barrio_id,
+            direccion=direccion_safe,
+            rol=RolUsuario(socio_db.rol),
+            esta_activo=socio_db.esta_activo,
+            usuario_id=socio_db.usuario_id,
+            # Defaults
+            fecha_nacimiento=None,
+            discapacidad=False,
+            tercera_edad=False
+        )

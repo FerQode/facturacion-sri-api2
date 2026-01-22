@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from drf_yasg.utils import swagger_auto_schema
+from django.db import transaction
 
 # Imports del Dominio
 from core.use_cases.registrar_cobro_uc import RegistrarCobroUseCase
@@ -13,6 +14,12 @@ from core.shared.exceptions import BusinessRuleException, EntityNotFoundExceptio
 # Modelos (Para lectura/validación)
 from adapters.infrastructure.models.factura_model import FacturaModel
 from adapters.infrastructure.models.pago_model import PagoModel
+
+# Implementaciones Concretas (Infraestructura)
+from adapters.infrastructure.repositories.django_factura_repository import DjangoFacturaRepository
+from adapters.infrastructure.repositories.django_pago_repository import DjangoPagoRepository
+from adapters.infrastructure.services.django_sri_service import DjangoSRIService
+from adapters.infrastructure.services.django_email_service import DjangoEmailService
 
 # ✅ IMPORTAMOS LOS SERIALIZERS (Asegúrate de que la ruta sea correcta)
 from adapters.api.serializers.factura_serializers import (
@@ -31,13 +38,27 @@ class CobroViewSet(viewsets.ViewSet):
     # --------------------------------------------------------------------------
     @swagger_auto_schema(request_body=RegistrarCobroSerializer)
     @action(detail=False, methods=['post'], url_path='registrar')
+    @transaction.atomic # ✅ Transacción controlada en el Entry Point
     def registrar_cobro(self, request):
         serializer = RegistrarCobroSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            uc = RegistrarCobroUseCase()
+            # INYECCIÓN DE DEPENDENCIAS MANUAL (Wiring)
+            # En un proyecto más grande usaríamos un contenedor IoC
+            factura_repo = DjangoFacturaRepository()
+            pago_repo = DjangoPagoRepository()
+            sri_service = DjangoSRIService()
+            email_service = DjangoEmailService()
+
+            uc = RegistrarCobroUseCase(
+                factura_repo=factura_repo,
+                pago_repo=pago_repo,
+                sri_service=sri_service,
+                email_service=email_service
+            )
+
             # Pagos directos en ventanilla nacen validados
             resultado = uc.ejecutar(
                 factura_id=serializer.validated_data['factura_id'],
@@ -48,6 +69,7 @@ class CobroViewSet(viewsets.ViewSet):
         except (EntityNotFoundException, BusinessRuleException) as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
+            # Log de error crítico
             return Response({"error": "Error interno", "detalle": str(e)}, status=500)
 
     # --------------------------------------------------------------------------

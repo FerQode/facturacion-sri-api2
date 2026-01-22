@@ -42,7 +42,11 @@ class LecturaModel(models.Model):
         default=0.00,
         verbose_name="Consumo Calculado (m3)"
     )
-    # -------------------------------------------------
+
+    # --- PERIODOS FISCALES (Integridad Contable) ---
+    anio = models.PositiveSmallIntegerField(default=2025, verbose_name="Año Fiscal")
+    mes = models.PositiveSmallIntegerField(default=1, verbose_name="Mes Fiscal")
+    # -----------------------------------------------
 
     fecha = models.DateField(verbose_name="Fecha de Toma")
     
@@ -56,7 +60,8 @@ class LecturaModel(models.Model):
         verbose_name_plural = 'Lecturas'
         get_latest_by = 'fecha'
         ordering = ['-fecha']
-        unique_together = ('medidor', 'fecha')
+        # Evita 2 lecturas para el mismo medidor en el mismo mes fiscal
+        unique_together = ['medidor', 'anio', 'mes']
 
     def __str__(self):
         return f"Medidor {self.medidor_id} - {self.fecha}: {self.valor} m3"

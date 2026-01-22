@@ -1,3 +1,4 @@
+#adapters.infrastructure.models.factura_model.py
 from django.db import models
 from django.utils import timezone
 from decimal import Decimal
@@ -37,6 +38,11 @@ class FacturaModel(models.Model):
     fecha_vencimiento = models.DateField()
     fecha_registro = models.DateTimeField(auto_now_add=True)
 
+    # --- PERIODOS FISCALES (Integridad Contable) ---
+    anio = models.PositiveSmallIntegerField(default=2025, verbose_name="Año Fiscal")
+    mes = models.PositiveSmallIntegerField(default=1, verbose_name="Mes Fiscal")
+    # -----------------------------------------------
+
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default=EstadoFactura.PENDIENTE.value)
 
     # Totales
@@ -62,6 +68,8 @@ class FacturaModel(models.Model):
         db_table = 'facturas'
         verbose_name = 'Factura'
         ordering = ['-fecha_registro']
+        # Evita doble facturación del mismo servicio en el mismo mes
+        unique_together = ['servicio', 'anio', 'mes']
 
 
 # El detalle se mantiene igual, está perfecto.

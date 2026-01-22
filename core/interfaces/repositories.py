@@ -1,225 +1,72 @@
-# core/interfaces/repositories.py
 from abc import ABC, abstractmethod
-from typing import List, Optional
-from datetime import date
-
-# Importamos nuestras Entidades de Dominio
-from core.domain.socio import Socio
-from core.domain.medidor import Medidor
-from core.domain.lectura import Lectura
+from typing import List, Optional, Any, Protocol, runtime_checkable, Dict
+from decimal import Decimal
 from core.domain.factura import Factura
-from core.domain.barrio import Barrio
-from core.domain.terreno import Terreno
-from core.domain.multa import Multa  # ✅ IMPORTANTE: Agregada esta línea
-from core.shared.enums import EstadoFactura, RolUsuario
+from core.domain.socio import Socio
+# Usamos Any para evitar imports circulares si Lectura no está disponible fácilmente
+# o importamos dentro de TYPE_CHECKING
+try:
+    from core.domain.lectura import Lectura
+except ImportError:
+    Lectura = Any
 
-"""
-Interfaces de Repositorio (Clean Architecture):
-Definen los contratos estrictos que la capa de Casos de Uso utilizará.
-La implementación concreta (Django ORM) estará en 'adapters/infrastructure/repositories'.
-"""
+try:
+    from core.domain.barrio import Barrio
+except ImportError:
+    Barrio = Any
 
-class ISocioRepository(ABC):
-    @abstractmethod
-    def get_by_id(self, socio_id: int) -> Optional[Socio]:
-        """Obtiene un socio por su ID único."""
-        pass
-
-    @abstractmethod
-    def get_by_cedula(self, cedula: str) -> Optional[Socio]:
-        """Obtiene un socio por su cédula de identidad."""
-        pass
-
-    @abstractmethod
-    def list_all(self) -> List[Socio]:
-        """Lista todos los socios activos en el sistema."""
-        pass
-
-    @abstractmethod
-    def save(self, socio: Socio) -> Socio:
-        """Guarda (crea) o actualiza un socio en la base de datos."""
-        pass
-
-    @abstractmethod
-    def get_by_usuario_id(self, usuario_id: int) -> Optional[Socio]:
-        """Obtiene el perfil de socio vinculado a una cuenta de usuario (login)."""
-        pass
-
-
-class ITerrenoRepository(ABC):
-    """
-    Gestión de Puntos de Suministro (Terrenos).
-    Un Socio tiene N Terrenos. Un Terreno tiene 1 Medidor.
-    """
-    @abstractmethod
-    def save(self, terreno: Terreno) -> Terreno:
-        """Persiste los cambios de un terreno."""
-        pass
-
-    @abstractmethod
-    def get_by_id(self, terreno_id: int) -> Optional[Terreno]:
-        """Busca un terreno por su ID."""
-        pass
-
-    @abstractmethod
-    def list_by_socio_id(self, socio_id: int) -> List[Terreno]:
-        """Lista todas las propiedades de un socio."""
-        pass
-
-    @abstractmethod
-    def list_by_barrio_id(self, barrio_id: int) -> List[Terreno]:
-        """Filtra terrenos por ubicación geográfica (Barrio)."""
-        pass
-
-    @abstractmethod
-    def create(self, terreno: Terreno) -> Terreno:
-        """Método explícito para crear un nuevo terreno."""
-        pass
-
-
-class IMedidorRepository(ABC):
-    @abstractmethod
-    def get_by_id(self, medidor_id: int) -> Optional[Medidor]:
-        pass
-
-    @abstractmethod
-    def get_by_codigo(self, codigo: str) -> Optional[Medidor]:
-        """Busca por serial/código único del dispositivo."""
-        pass
-
-    @abstractmethod
-    def get_by_terreno_id(self, terreno_id: int) -> Optional[Medidor]:
-        """Obtiene el medidor activo instalado en un terreno."""
-        pass
-
-    @abstractmethod
-    def list_all(self) -> List[Medidor]:
-        pass
-
-    @abstractmethod
-    def save(self, medidor: Medidor) -> Medidor:
-        pass
-
-    @abstractmethod
-    def create(self, medidor: Medidor) -> Medidor:
-        pass
-
-
-class IBarrioRepository(ABC):
-    @abstractmethod
-    def list_all(self) -> List[Barrio]:
-        pass
-
-    @abstractmethod
-    def get_by_id(self, barrio_id: int) -> Optional[Barrio]:
-        pass
-
-    @abstractmethod
-    def get_by_nombre(self, nombre: str) -> Optional[Barrio]:
-        pass
-
-    @abstractmethod
-    def save(self, barrio: Barrio) -> Barrio:
-        pass
-
-    @abstractmethod
-    def delete(self, barrio_id: int) -> None:
-        pass
-
-
-class ILecturaRepository(ABC):
-    @abstractmethod
-    def get_latest_by_medidor(self, medidor_id: int) -> Optional[Lectura]:
-        """Obtiene la última lectura registrada para calcular el consumo del mes actual."""
-        pass
-
-    @abstractmethod
-    def get_by_id(self, lectura_id: int) -> Optional[Lectura]:
-        pass
-
-    @abstractmethod
-    def list_by_medidor(self, medidor_id: int, limit: int = 12) -> List[Lectura]:
-        """[MEJORA] Obtiene historial de lecturas (ej: últimos 12 meses)."""
-        pass
-
-    @abstractmethod
-    def save(self, lectura: Lectura) -> Lectura:
-        pass
-
+try:
+    from core.domain.multa import Multa
+except ImportError:
+    Multa = Any
 
 class IFacturaRepository(ABC):
     @abstractmethod
-    def get_by_id(self, factura_id: int) -> Optional[Factura]:
+    def obtener_por_id(self, id: int) -> Optional[Factura]:
+        """Debe retornar la entidad Factura con sus detalles y socio cargados"""
         pass
 
     @abstractmethod
-    def get_by_clave_acceso(self, clave_acceso: str) -> Optional[Factura]:
-        """Busca una factura por la clave de acceso del SRI (49 dígitos)."""
+    def existe_factura_fija_mes(self, servicio_id: int, anio: int, mes: int) -> bool:
+        """Verifica si ya existe factura para un servicio fijo en ese mes/año"""
         pass
+
+    @abstractmethod
+    def guardar(self, factura: Factura) -> Factura:
+        """Persiste los cambios de la factura. Retorna la factura guardada (o None)"""
+        pass
+    
+    # Alias para compatibilidad con código legacy (GenerarFacturaUseCase usa .save())
+    def save(self, factura: Factura) -> Any:
+        return self.guardar(factura)
 
     @abstractmethod
     def get_by_lectura_id(self, lectura_id: int) -> Optional[Factura]:
+        """Busca si existe factura generada para esa lectura (Idempotencia)"""
+        pass
+
+class IPagoRepository(ABC):
+    @abstractmethod
+    def obtener_sumatoria_validada(self, factura_id: int) -> float:
+        """Retorna la suma de pagos (Transferencias) ya validados"""
+        pass
+    
+    @abstractmethod
+    def tiene_pagos_pendientes(self, factura_id: int) -> bool:
+        """Verifica si hay pagos subidos pero no validados (Candado de Seguridad)"""
+        pass
+
+    @abstractmethod
+    def registrar_pagos(self, factura_id: int, pagos: List[dict]) -> None:
         """
-        [CRÍTICO] Busca si ya existe una factura generada para una lectura específica.
-        Vital para la Idempotencia (evitar duplicados).
+        Guarda nuevos pagos (Efectivo, Transferencia, etc).
+        En el caso de Transferencias mixtas en caja, se asumen validadas.
         """
         pass
-
-    @abstractmethod
-    def list_by_socio_and_date_range(
-        self, socio_id: int, fecha_inicio: date, fecha_fin: date
-    ) -> List[Factura]:
-        pass
-
-    @abstractmethod
-    def list_by_socio(self, socio_id: int) -> List[Factura]:
-        pass
-
-    @abstractmethod
-    def list_by_estado(self, estado: EstadoFactura) -> List[Factura]:
-        pass
-
-    @abstractmethod
-    def save(self, factura: Factura) -> Factura:
-        """Crea o actualiza una factura y sus detalles."""
-        pass
-
-    @abstractmethod
-    def obtener_pendientes_por_socio(self, socio_id: int) -> List[Factura]:
-        """Obtiene las facturas pendientes de pago para un socio específico."""
-        pass
-
-
-# ✅ NUEVA CLASE ABSTRACTA (Soluciona el ImportError)
-class IMultaRepository(ABC):
-    """
-    Define el contrato para la gestión de Multas.
-    """
-    @abstractmethod
-    def get_by_id(self, multa_id: int) -> Optional[Multa]:
-        """Obtiene una multa por su ID."""
-        pass
-
-    @abstractmethod
-    def save(self, multa: Multa) -> Multa:
-        """Guarda (crea o actualiza) una multa en la base de datos."""
-        pass
-
-    @abstractmethod
-    def list_all(self) -> List[Multa]:
-        """Lista todas las multas en el sistema."""
-        pass
-
-    @abstractmethod
-    def obtener_pendientes_por_socio(self, socio_id: int) -> List[Multa]:
-        """Obtiene las multas pendientes de pago para un socio específico."""
-        pass
-
 
 class IAuthRepository(ABC):
     @abstractmethod
-    def crear_usuario(self, username: str, password: str, email: str = None, rol: 'RolUsuario' = None) -> int:
-        """Crea un usuario en el sistema de identidad y retorna su ID."""
+    def crear_usuario(self, username: str, password: str, email: str = None, rol: Any = None) -> int:
         pass
 
     @abstractmethod
@@ -230,8 +77,74 @@ class IAuthRepository(ABC):
     def activar_usuario(self, user_id: int) -> None:
         pass
 
+class IBarrioRepository(ABC):
+    @abstractmethod
+    def list_all(self) -> List[Barrio]:
+        pass
+    
+    @abstractmethod
+    def get_by_id(self, barrio_id: int) -> Optional[Barrio]:
+        pass
+
+    @abstractmethod
+    def get_by_nombre(self, nombre: str) -> Optional[Barrio]:
+        pass
+    
+    @abstractmethod
+    def save(self, barrio: Barrio) -> Barrio:
+        pass
+    
+    @abstractmethod
+    def delete(self, barrio_id: int) -> None:
+        pass
+
+class IMultaRepository(ABC):
+    @abstractmethod
+    def obtener_pendientes_por_socio(self, socio_id: int) -> List[Any]:
+        pass
+
+    @abstractmethod
+    def get_by_id(self, multa_id: int) -> Optional[Any]: 
+        pass
+
+    @abstractmethod
+    def save(self, multa: Any) -> Any:
+        pass
+
+# --- Interfaces Restauradas (Legacy Support) ---
+
+class ILecturaRepository(ABC):
+    @abstractmethod
+    def get_latest_by_medidor(self, medidor_id: int) -> Optional[Lectura]:
+        pass
+
+    @abstractmethod
+    def get_by_id(self, lectura_id: int) -> Optional[Lectura]:
+        pass
+
+    @abstractmethod
+    def save(self, lectura: Lectura) -> Lectura:
+        pass
+
 class IServicioRepository(ABC):
     @abstractmethod
-    def create_automatico(self, terreno_id: int, socio_id: int, tipo: str, valor: float) -> None:
-        """Crea el vínculo de servicio (Fijo o Variable) para un terreno."""
+    def obtener_servicios_fijos_activos(self) -> List[Any]:
+        """Retorna lista (o QuerySet) de servicios activos de tarifa fija"""
         pass
+
+class IMedidorRepository(ABC):
+    @abstractmethod
+    def get_by_id(self, medidor_id: int) -> Optional[Any]:
+        pass
+
+class ISocioRepository(ABC):
+    @abstractmethod
+    def get_by_id(self, socio_id: int) -> Optional[Socio]:
+        pass
+
+class ITerrenoRepository(ABC):
+    @abstractmethod
+    def get_by_id(self, terreno_id: int) -> Optional[Any]:
+        pass
+
+

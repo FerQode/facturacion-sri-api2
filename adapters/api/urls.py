@@ -13,7 +13,8 @@ from .views import (
     terreno_views,
     multa_views,
     servicio_agua_views, # ✅ AGREGADO: Importamos la vista del Servicio de Agua
-    cobro_views
+    cobro_views,
+    sri_views # ✅ AGREGADO: Vista para sincronización SRI
 )
 
 # ==============================================================================
@@ -49,6 +50,10 @@ router.register(r'facturas-gestion', factura_views.FacturaMasivaViewSet, basenam
 # 6. Cobros y Pagos (Caja)
 # Genera: POST /api/v1/cobros/registrar/
 router.register(r'cobros', cobro_views.CobroViewSet, basename='cobros')
+
+# 7. SRI (Sincronización y Reintentos)
+# Genera: POST /api/v1/sri/{pk}/sincronizar/
+router.register(r'sri', sri_views.SRIViewSet, basename='sri')
 
 
 # ==============================================================================
