@@ -9,6 +9,7 @@ from datetime import datetime
 from tempfile import NamedTemporaryFile
 from itertools import cycle
 from pathlib import Path
+from django.conf import settings
 
 # Django & Third Party
 from django.conf import settings
@@ -147,10 +148,25 @@ class DjangoSRIService(ISRIService):
             etree.SubElement(info_factura, "fechaEmision").text = factura.fecha_emision.strftime('%d/%m/%Y')
             etree.SubElement(info_factura, "dirEstablecimiento").text = settings.SRI_EMISOR_DIRECCION_MATRIZ
             etree.SubElement(info_factura, "obligadoContabilidad").text = getattr(settings, 'SRI_OBLIGADO_CONTABILIDAD', 'NO')
-            etree.SubElement(info_factura, "tipoIdentificacionComprador").text = "05" # Cédula (Ajustar lógica si es RUC)
+            # LÓGICA DINÁMICA DE IDENTIFICACIÓN
+            # Tabla 6 del SRI
+            codigo_tipo_id = "05" # Default Cédula
+            
+            # Normalizamos a mayúsculas por si acaso
+            tipo = str(socio.tipo_identificacion).upper()
+            
+            if 'RUC' in tipo or tipo == 'R':
+                codigo_tipo_id = "04"
+            elif 'PASAPORTE' in tipo or tipo == 'P':
+                codigo_tipo_id = "06"
+
+            etree.SubElement(info_factura, "tipoIdentificacionComprador").text = codigo_tipo_id
+            
             nombre_completo = f"{socio.nombres} {socio.apellidos}".strip()
             etree.SubElement(info_factura, "razonSocialComprador").text = nombre_completo
-            etree.SubElement(info_factura, "identificacionComprador").text = socio.cedula
+            
+            # Usamos el nuevo campo 'identificacion'
+            etree.SubElement(info_factura, "identificacionComprador").text = socio.identificacion
             etree.SubElement(info_factura, "totalSinImpuestos").text = f"{factura.subtotal:.2f}"
             etree.SubElement(info_factura, "totalDescuento").text = "0.00"
 

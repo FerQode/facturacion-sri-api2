@@ -34,7 +34,8 @@ class DjangoSocioRepository(ISocioRepository):
 
         return Socio(
             id=model.id,
-            cedula=model.cedula,
+            identificacion=model.identificacion,
+            tipo_identificacion=model.tipo_identificacion,
             nombres=model.nombres,
             apellidos=model.apellidos,
             email=model.email,
@@ -58,9 +59,9 @@ class DjangoSocioRepository(ISocioRepository):
         except SocioModel.DoesNotExist:
             return None
 
-    def get_by_cedula(self, cedula: str) -> Optional[Socio]:
+    def get_by_identificacion(self, identificacion: str) -> Optional[Socio]:
         try:
-            model = SocioModel.objects.select_related('usuario').get(cedula=cedula)
+            model = SocioModel.objects.select_related('usuario').get(identificacion=identificacion)
             return self._map_model_to_domain(model)
         except SocioModel.DoesNotExist:
             return None
@@ -91,7 +92,8 @@ class DjangoSocioRepository(ISocioRepository):
     def save(self, socio: Socio) -> Socio:
         # Preparamos los datos
         data_db = {
-            'cedula': socio.cedula,
+            'identificacion': socio.identificacion,
+            'tipo_identificacion': socio.tipo_identificacion,
             'nombres': socio.nombres,
             'apellidos': socio.apellidos,
             'email': socio.email,

@@ -243,7 +243,7 @@ try:
 except Exception as e:
     print(f"❌ Error cargando configuración SRI en settings.py: {e}")
 
-
+SRI_SECUENCIA_INICIO = 600
 # ==============================================================================
 # 12. CONFIGURACIÓN DE CORREO ELECTRÓNICO (GMAIL)
 # ==============================================================================

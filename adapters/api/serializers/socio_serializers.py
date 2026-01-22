@@ -8,7 +8,8 @@ class SocioSerializer(serializers.Serializer):
     Muestra los datos del Socio tal como vienen del DTO.
     """
     id = serializers.IntegerField(read_only=True)
-    cedula = serializers.CharField(max_length=10)
+    identificacion = serializers.CharField(max_length=13)
+    tipo_identificacion = serializers.CharField(max_length=1)
     nombres = serializers.CharField(max_length=100)
     apellidos = serializers.CharField(max_length=100)
     
@@ -28,7 +29,8 @@ class CrearSocioSerializer(serializers.Serializer):
     Serializer de ENTRADA (Creación).
     Valida que los datos sean correctos antes de pasar al Caso de Uso.
     """
-    cedula = serializers.CharField(max_length=10)
+    identificacion = serializers.CharField(max_length=13)
+    tipo_identificacion = serializers.ChoiceField(choices=['C', 'R', 'P'], default='C')
     nombres = serializers.CharField(max_length=100)
     apellidos = serializers.CharField(max_length=100)
     
@@ -49,6 +51,27 @@ class CrearSocioSerializer(serializers.Serializer):
     def validate_rol(self, value):
         """ Convierte el string (ej: "Socio") de vuelta a un Enum """
         return RolUsuario(value)
+
+    def validate(self, data):
+        """ 
+        Validación cruzada y algorítmica usando el Dominio Puro 
+        """
+        from core.domain.socio import Socio
+        
+        # Validamos usando la entidad de dominio (DRY - Don't Repeat Yourself)
+        try:
+            # Creamos una instancia "dummy" solo para validar
+            Socio(
+                id=None,
+                identificacion=data.get('identificacion'),
+                tipo_identificacion=data.get('tipo_identificacion'),
+                nombres=data.get('nombres'),
+                apellidos=data.get('apellidos')
+            )
+        except ValueError as e:
+            raise serializers.ValidationError({"identificacion": str(e)})
+
+        return data
 
 class ActualizarSocioSerializer(serializers.Serializer):
     """ 

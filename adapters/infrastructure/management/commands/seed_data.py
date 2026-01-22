@@ -24,22 +24,49 @@ class Command(BaseCommand):
         barrio, _ = BarrioModel.objects.get_or_create(nombre="Barrio Central")
 
         # 3. Socios (5)
+        # Lista de Cédulas Válidas (Generadas para pruebas, cumplen algoritmo Mod10)
+        valid_cedulas = [
+            "1710034065", 
+            "1722246392", 
+            "0910000005", 
+            "0915437172", 
+            "1102945415"
+        ]
+
         socios = []
-        for i in range(1, 6):
-            cedula = f"110000000{i}"
+        for i, val_id in enumerate(valid_cedulas, 1):
+            cedula = val_id
             user_socio, _ = User.objects.get_or_create(username=cedula)
-            user_socio.set_password("1234")
+            # Estrategia Dev: Clave = Identificación
+            user_socio.set_password(cedula)
             user_socio.save()
             
             socio, _ = SocioModel.objects.get_or_create(
-                cedula=cedula,
+                identificacion=cedula,
                 defaults={
                     'nombres': f"Socio_{i}", 'apellidos': "Test",
-                    'usuario': user_socio, 'barrio': barrio, 'direccion': f"Calle {i}"
+                    'usuario': user_socio, 'barrio': barrio, 'direccion': f"Calle {i}",
+                    'tipo_identificacion': 'C' 
                 }
             )
             socios.append(socio)
         self.stdout.write("5 Socios creados.")
+
+        # 3.1 Socio RUC (Hacienda La Esperanza)
+        ruc = "1790011674001" # RUC Válido
+        user_ruc, _ = User.objects.get_or_create(username=ruc)
+        user_ruc.set_password(ruc)
+        user_ruc.save()
+        
+        socio_ruc, _ = SocioModel.objects.get_or_create(
+            identificacion=ruc,
+            defaults={
+                'nombres': "Hacienda La Esperanza", 'apellidos': "(Empresa)",
+                'usuario': user_ruc, 'barrio': barrio, 'direccion': "Via a la Costa Km 10",
+                'tipo_identificacion': 'R'
+            }
+        )
+        self.stdout.write("Socio RUC creado (Hacienda La Esperanza).")
 
         # 4. Servicios Fijos (2) - Socios 1 y 2
         for i in range(2):

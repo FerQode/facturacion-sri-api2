@@ -23,14 +23,14 @@ class BarrioAdmin(admin.ModelAdmin):
 
 @admin.register(SocioModel)
 class SocioAdmin(admin.ModelAdmin):
-    list_display = ('cedula', 'apellidos', 'nombres', 'barrio', 'rol', 'esta_activo')
+    list_display = ('identificacion', 'apellidos', 'nombres', 'barrio', 'rol', 'esta_activo')
     list_filter = ('rol', 'esta_activo', 'barrio')
-    search_fields = ('cedula', 'nombres', 'apellidos')
+    search_fields = ('identificacion', 'nombres', 'apellidos')
     ordering = ['apellidos'] 
 
     fieldsets = (
         ('Identificación', {
-            'fields': ('cedula', 'nombres', 'apellidos')
+            'fields': ('identificacion', 'nombres', 'apellidos')
         }),
         ('Contacto', {
             'fields': ('email', 'telefono', 'barrio', 'direccion')
@@ -44,7 +44,7 @@ class SocioAdmin(admin.ModelAdmin):
 class TerrenoAdmin(admin.ModelAdmin):
     list_display = ('id', 'get_socio_nombre', 'barrio', 'direccion', 'es_cometida_activa')
     list_filter = ('es_cometida_activa', 'barrio')
-    search_fields = ('direccion', 'socio__cedula', 'socio__apellidos')
+    search_fields = ('direccion', 'socio__identificacion', 'socio__apellidos')
     autocomplete_fields = ['socio', 'barrio']
 
     def get_socio_nombre(self, obj):
@@ -55,7 +55,7 @@ class TerrenoAdmin(admin.ModelAdmin):
 class MedidorAdmin(admin.ModelAdmin):
     list_display = ('codigo', 'estado', 'marca', 'lectura_inicial', 'get_ubicacion')
     list_filter = ('estado', 'marca')
-    search_fields = ('codigo', 'terreno__socio__cedula')
+    search_fields = ('codigo', 'terreno__socio__identificacion')
     
     def get_ubicacion(self, obj):
         if obj.terreno:
@@ -88,7 +88,7 @@ class LecturaAdmin(admin.ModelAdmin):
 class MultaAdmin(admin.ModelAdmin):
     list_display = ('id', 'socio', 'motivo', 'valor', 'estado', 'fecha_registro')
     list_filter = ('estado', 'fecha_registro')
-    search_fields = ('socio__nombres', 'socio__cedula', 'motivo')
+    search_fields = ('socio__nombres', 'socio__identificacion', 'motivo')
     list_editable = ('estado',) # Útil para marcar PAGADA rápido en pruebas
 
 # --- ✅ SECCIÓN DE FACTURACIÓN Y PAGOS ---
@@ -109,7 +109,7 @@ class PagoInline(admin.TabularInline):
 class FacturaAdmin(admin.ModelAdmin):
     list_display = ('id', 'get_socio', 'fecha_emision', 'total', 'estado', 'estado_sri')
     list_filter = ('estado', 'estado_sri', 'fecha_emision')
-    search_fields = ('socio__cedula', 'sri_clave_acceso') 
+    search_fields = ('socio__identificacion', 'sri_clave_acceso') 
     
     # Mostramos Detalles y Pagos en la misma ficha
     inlines = [DetalleFacturaInline, PagoInline]
