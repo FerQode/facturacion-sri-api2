@@ -267,3 +267,5 @@ if not EMAIL_HOST_USER or not EMAIL_HOST_PASSWORD:
 # Al final de tu settings.py
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+# SRI Offset
+SRI_SECUENCIA_INICIO = 520

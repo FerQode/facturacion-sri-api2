@@ -114,17 +114,19 @@ class DjangoSRIService(ISRIService):
     def _generar_xml_factura(self, factura: Factura, socio: Socio) -> tuple[str, str]:
         """Construye el XML v1.1.0 usando lxml"""
         try:
-            emisor_ruc = settings.SRI_EMISOR_RUC
-            numero_base = 1000 + int(factura.id)
-            nro_factura_secuencial = str(numero_base)
+            # LÓGICA DE SECUENCIAL (OFFSET CONFIGURABLE)
+            # Permite evitar duplicados en pruebas sumando un valor base al ID
+            secuencia_inicio = getattr(settings, 'SRI_SECUENCIA_INICIO', 0)
+            numero_secuencial = secuencia_inicio + int(factura.id)
+            nro_factura_secuencial = str(numero_secuencial)
 
             if factura.sri_clave_acceso:
                 clave_acceso = factura.sri_clave_acceso
             else:
                 clave_acceso = self.generar_clave_acceso(
                     fecha_emision=factura.fecha_emision,
-                    nro_factura=str(numero_base)
-            )
+                    nro_factura=str(numero_secuencial)
+                )
 
             # Nodo Raíz
             xml_factura = etree.Element("factura", id="comprobante", version="1.1.0")
