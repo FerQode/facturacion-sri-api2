@@ -1,0 +1,83 @@
+============================= test session starts =============================
+platform win32 -- Python 3.10.11, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\ASUS\AppData\Local\Programs\Python\Python310\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\ASUS\Documents\202551 - SOFTWARE\facturacion-sri-api2
+collecting ... collected 2 items
+
+tests/core/use_cases/test_registrar_cobro.py::test_registrar_cobro_exito FAILED [ 50%]
+tests/core/use_cases/test_registrar_cobro.py::test_registrar_cobro_candado_seguridad PASSED [100%]
+
+================================== FAILURES ===================================
+_________________________ test_registrar_cobro_exito __________________________
+
+use_case = <core.use_cases.registrar_cobro_uc.RegistrarCobroUseCase object at 0x000001DDD2B3E950>
+mock_factura_repo = <MagicMock id='2052234075376'>
+mock_pago_repo = <MagicMock id='2052234366400'>
+mock_sri_service = <MagicMock id='2052234374176'>
+
+    def test_registrar_cobro_exito(use_case, mock_factura_repo, mock_pago_repo, mock_sri_service):
+        """
+        Escenario: Cobro completo de una factura pendiente.
+        Debe:
+        1. Calcular totales correctamente.
+        2. Cambiar estado a PAGADA.
+        3. Registrar pagos en repo.
+        4. Generar Clave SRI.
+        5. Enviar al SRI.
+        """
+        # GIVEN
+        factura_id = 1
+        factura_mock = Factura(
+            id=factura_id,
+            socio_id=10,
+            medidor_id=5,
+            fecha_emision=date(2025, 1, 1),
+            fecha_vencimiento=date(2025, 2, 1),
+            fecha_registro=datetime(2025, 1, 1, 12, 0, 0),
+            total=Decimal("10.00"),
+            estado=EstadoFactura.PENDIENTE,
+            detalles=[]
+        )
+        # Simulamos que tiene el objeto socio cargado (necesario para SRI)
+        factura_mock.socio_obj = Socio(id=10, nombres="Juan", apellidos="Perez", cedula="1700000000", email="juan@test.com")
+    
+        # Mocking Repos
+        mock_factura_repo.obtener_por_id.return_value = factura_mock
+    
+        # Mocking SRI
+        mock_sri_service.generar_clave_acceso.return_value = "1234567890123456789012345678901234567890123456789"
+        mock_sri_service.enviar_factura.return_value = MagicMock(exito=True, estado='RECIBIDA')
+    
+        # Datos de entrada (Cobro Total)
+        pagos_input = [{"metodo": "EFECTIVO", "monto": 10.00}]
+    
+        # WHEN
+>       resultado = use_case.ejecutar(factura_id, pagos_input)
+
+tests\core\use_cases\test_registrar_cobro.py:77: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <core.use_cases.registrar_cobro_uc.RegistrarCobroUseCase object at 0x000001DDD2B3E950>
+factura_id = 1, lista_pagos = [{'metodo': 'EFECTIVO', 'monto': 10.0}]
+
+    def ejecutar(self, factura_id: int, lista_pagos: List[Dict]) -> Dict:
+        # 1. Obtener Entidad (Agn¾stico de la BD)
+        factura = self.factura_repo.obtener_por_id(factura_id)
+        if not factura:
+            raise EntityNotFoundException(f"La factura {factura_id} no existe.")
+    
+        # 2. Validaciones de Dominio Puras
+        if factura.estado == EstadoFactura.PAGADA:
+            raise BusinessRuleException("Esta factura ya se encuentra PAGADA.")
+    
+        # (Asumimos que la validaci¾n de ANULADA se maneja igual si existiera el estado)
+    
+        # 3. L¾gica del "Candado" (Delegada al repositorio)
+        if self.pago_repo.tiene_pagos_pendientes(factura.id):
+>            raise BusinessRuleException("Error: Existen transferencias subidas pero NO verificadas por TesorerÝa. Vaya al m¾dulo de validaci¾n primero.")
+E            core.shared.exceptions.BusinessRuleException: Error: Existen transferencias subidas pero NO verificadas por TesorerÝa. Vaya al m¾dulo de validaci¾n primero.
+
+core\use_cases\registrar_cobro_uc.py:48: BusinessRuleException
+=========================== short test summary info ===========================
+FAILED tests/core/use_cases/test_registrar_cobro.py::test_registrar_cobro_exito
+========================= 1 failed, 1 passed in 0.20s =========================

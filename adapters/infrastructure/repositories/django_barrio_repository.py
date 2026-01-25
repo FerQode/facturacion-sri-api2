@@ -22,7 +22,7 @@ class DjangoBarrioRepository(IBarrioRepository):
     def list_all(self) -> List[Barrio]:
         """Devuelve todos los barrios (solo los activos por defecto, o todos?)"""
         # Por regla general, listamos solo los activos para los selects
-        models = BarrioModel.objects.filter(activo=True)
+        models = BarrioModel.objects.all().order_by('id')
         return [self._to_entity(m) for m in models]
 
     def get_by_id(self, barrio_id: int) -> Optional[Barrio]:

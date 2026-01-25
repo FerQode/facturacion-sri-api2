@@ -1,4 +1,4 @@
-# core/domain/lectura.py
+# core>domain>lectura.py
 from dataclasses import dataclass
 from datetime import date
 from typing import Optional
@@ -6,22 +6,30 @@ from typing import Optional
 @dataclass
 class Lectura:
     """
-    Entidad que representa el registro de consumo de un medidor.
+    Entidad de Dominio: Lectura (Snapshot Inmutable).
+    
+    Representa el estado exacto de una medición en un momento del tiempo.
+    Para cumplir con requisitos del SRI y trazabilidad, almacenamos explícitamente
+    los valores utilizados para el cálculo, en lugar de recalcularlos dinámicamente.
     """
     id: Optional[int]
     medidor_id: int
-    fecha_lectura: date
-    lectura_actual_m3: int # Valor actual en metros cúbicos
-    lectura_anterior_m3: int # Valor con el que se facturó el mes pasado
+    fecha: date
     
-    @property
-    def consumo_del_mes_m3(self) -> int:
-        """
-        Calcula el consumo del período.
-        """
-        if self.lectura_actual_m3 < self.lectura_anterior_m3:
-            # Manejo de reinicio del medidor (caso anómalo)
-            # Aquí iría lógica más compleja, pero por ahora lanzamos error
-            raise ValueError("Lectura actual no puede ser menor a la anterior.")
-        
-        return self.lectura_actual_m3 - self.lectura_anterior_m3
+    # --- BLOQUE DE DATOS DE FACTURACIÓN (INMUTABLES) ---
+    # Estos campos son obligatorios para garantizar la integridad de la factura.
+    # Se deben calcular en el Caso de Uso antes de instanciar esta entidad.
+    
+    valor: float              # Lectura Actual
+    lectura_anterior: float   # Lectura Previa (Snapshot)
+    consumo_del_mes_m3: float # Resultado de la resta (Snapshot)
+
+    # --- METADATOS Y OPCIONALES (Defaults al final) ---
+    observacion: Optional[str] = None
+    esta_facturada: bool = False
+
+    # NOTA DE DISEÑO:
+    # Se eliminó la @property 'consumo_calculado'. 
+    # La lógica de validación (actual < anterior) y cálculo debe residir 
+    # en el Caso de Uso 'RegistrarLectura' para asegurar que lo que se guarda 
+    # es exactamente lo que se calculó en ese momento.

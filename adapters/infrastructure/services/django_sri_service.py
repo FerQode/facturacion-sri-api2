@@ -1,342 +1,407 @@
 # adapters/infrastructure/services/django_sri_service.py
 
-from django.conf import settings
-from typing import Optional
+import os
 import logging
-import random
+import subprocess
 import base64
+import random
 from datetime import datetime
+from tempfile import NamedTemporaryFile
+from itertools import cycle
+from pathlib import Path
+from django.conf import settings
+
+# Django & Third Party
+from django.conf import settings
 from lxml import etree
+import zeep
+from zeep.helpers import serialize_object
+import json
 
-# Librerías de terceros (Asegúrate de instalarlas: pip install zeep xmlsec)
-try:
-    import zeep
-    import xmlsec
-except ImportError:
-    raise ImportError("Por favor instala 'zeep' y 'xmlsec' (pip install zeep xmlsec)")
-
-# Contratos y Entidades del CORE
+# Core (Clean Architecture)
 from core.interfaces.services import ISRIService, SRIAuthData, SRIResponse
 from core.domain.factura import Factura
-from core.domain.socio import Socio 
+from core.domain.socio import Socio
 
-# Configura un logger
 logger = logging.getLogger(__name__)
 
 class DjangoSRIService(ISRIService):
     """
-    Implementación del servicio del SRI.
-    Lee la configuración (claves, RUC, etc.) desde settings.py.
+    Implementación robusta del Servicio SRI.
+    - Generación XML: Python (lxml)
+    - Firma Digital: Java (sri.jar externo) -> Estabilidad garantizada.
+    - Envío SOAP: Python (Zeep)
     """
+
     def __init__(self):
         try:
+            # Validación básica de configuración
+            if not hasattr(settings, 'SRI_FIRMA_PATH') or not settings.SRI_FIRMA_PATH:
+                raise ValueError("SRI_FIRMA_PATH no está configurado en settings.")
+
             self.auth = SRIAuthData(
-                firma_path=str(settings.SRI_FIRMA_PATH), 
+                firma_path=str(settings.SRI_FIRMA_PATH),
                 firma_pass=settings.SRI_FIRMA_PASS,
                 sri_url_recepcion=settings.SRI_URL_RECEPCION,
                 sri_url_autorizacion=settings.SRI_URL_AUTORIZACION
             )
+
+            # Inicializamos clientes SOAP (Zeep es moderno y maneja bien WSDLs del SRI)
             self.soap_client_recepcion = zeep.Client(self.auth.sri_url_recepcion)
             self.soap_client_autorizacion = zeep.Client(self.auth.sri_url_autorizacion)
-            logger.info("Clientes SOAP de Recepción y Autorización del SRI inicializados.")
-            
-        except AttributeError as e:
-            logger.error(f"Error: Faltan configuraciones del SRI en settings.py. {e}")
-            raise ValueError("Configuración del SRI incompleta. Revisa tu .env y settings.py")
+
+            # Ruta absoluta al JAR de firma (Basado en tu estructura de carpetas)
+            # facturacion-sri-api2/adapters/infrastructure/files/jar/sri.jar
+            self.jar_path = os.path.join(
+                settings.BASE_DIR,
+                'adapters', 'infrastructure', 'files', 'jar', 'sri.jar'
+            )
+
+            if not os.path.exists(self.jar_path):
+                logger.warning(f"⚠️ ADVERTENCIA: No se encuentra sri.jar en: {self.jar_path}")
+
         except Exception as e:
-            logger.error(f"Error al inicializar el cliente SOAP de Zeep: {e}")
-            raise ConnectionError(f"No se pudo conectar a los WSDL del SRI.")
+            logger.error(f"Error inicializando DjangoSRIService: {e}")
+            raise e
 
-    # --- HELPER 1: Dígito Verificador (Módulo 11) ---
-    def _calcular_digito_verificador_modulo11(self, clave: str) -> str:
-        factor = 7
-        total = 0
-        for digito in clave:
-            total += int(digito) * factor
-            factor = factor - 1
-            if factor == 1:
-                factor = 7
-        
-        resultado = 11 - (total % 11)
-        if resultado == 11:
-            return "0"
-        if resultado == 10:
-            return "1"
-        return str(resultado)
+    # --- 1. LÓGICA DE CLAVES (Módulo 11) ---
 
-    # --- HELPER 2: Generador de Clave de Acceso ---
-    def _generar_clave_acceso(self, emisor_ruc: str, fecha_emision: datetime.date, nro_factura: str) -> str:
+    def _compute_mod11(self, pass_key_48: str) -> str:
+        """Algoritmo oficial del SRI para dígito verificador (Portado del Proyecto A)"""
+        if len(pass_key_48) > 48:
+            return ''
+        addition = 0
+        factors = cycle((2, 3, 4, 5, 6, 7))
+        for digit, factor in zip(reversed(pass_key_48), factors):
+            addition += int(digit) * factor
+        number = 11 - addition % 11
+        if number == 11:
+            number = 0
+        elif number == 10:
+            number = 1
+        return str(number)
+
+    def generar_clave_acceso(self, fecha_emision: datetime.date, nro_factura: str) -> str:
+        """Genera la clave de acceso de 49 dígitos"""
         fecha = fecha_emision.strftime('%d%m%Y')
-        tipo_comprobante = "01" 
-        ruc = emisor_ruc
-        ambiente = settings.SRI_AMBIENTE
-        serie = settings.SRI_SERIE_ESTABLECIMIENTO + settings.SRI_SERIE_PUNTO_EMISION
+        tipo_comprobante = "01"  # Factura
+        ruc = settings.SRI_EMISOR_RUC # Configuración Centralizada
+        ambiente = str(settings.SRI_AMBIENTE) # 1: Pruebas, 2: Producción
+
+        # Serie: Estab + Punto Emisión
+        serie = f"{settings.SRI_SERIE_ESTABLECIMIENTO}{settings.SRI_SERIE_PUNTO_EMISION}"
         secuencial = nro_factura.zfill(9)
-        codigo_numerico = "".join(random.choices("0123456789", k=8))
-        tipo_emision = "1" 
-        
-        clave_sin_dv = (
-            fecha + tipo_comprobante + ruc + ambiente + 
-            serie + secuencial + codigo_numerico + tipo_emision
-        )
-        
-        digito_verificador = self._calcular_digito_verificador_modulo11(clave_sin_dv)
-        clave_acceso = clave_sin_dv + digito_verificador
-        
+
+        # Código numérico aleatorio (8 dígitos)
+        codigo_numerico = ''.join(random.choices("0123456789", k=8))
+        tipo_emision = "1" # Normal
+
+        # Primeros 48 dígitos
+        clave_48 = f"{fecha}{tipo_comprobante}{ruc}{ambiente}{serie}{secuencial}{codigo_numerico}{tipo_emision}"
+
+        # Dígito verificador
+        digito_verificador = self._compute_mod11(clave_48)
+
+        clave_acceso = f"{clave_48}{digito_verificador}"
+
         if len(clave_acceso) != 49:
-            raise ValueError(f"Error al generar clave de acceso: longitud incorrecta ({len(clave_acceso)})")
-        
+            raise ValueError(f"Error generando clave acceso. Longitud obtenida: {len(clave_acceso)}")
+
         return clave_acceso
 
-    # --- MÉTODO 1: Generación de XML ---
+    # --- 2. GENERACIÓN XML ---
+
     def _generar_xml_factura(self, factura: Factura, socio: Socio) -> tuple[str, str]:
-        logger.info(f"Generando XML para factura {factura.id}...")
-        
-        emisor_ruc = settings.SRI_EMISOR_RUC
-        emisor_razon_social = settings.SRI_EMISOR_RAZON_SOCIAL
-        emisor_dir_matriz = settings.SRI_EMISOR_DIRECCION_MATRIZ
-        emisor_nombre_comercial = settings.SRI_NOMBRE_COMERCIAL
-        
-        nro_factura_secuencial = str(factura.id)
-        
-        clave_acceso = self._generar_clave_acceso(
-            emisor_ruc=emisor_ruc,
-            fecha_emision=factura.fecha_emision,
-            nro_factura=nro_factura_secuencial
-        )
-        
-        xml_factura = etree.Element("factura", id="comprobante", version="1.1.0")
-        
-        info_tributaria = etree.SubElement(xml_factura, "infoTributaria")
-        etree.SubElement(info_tributaria, "ambiente").text = settings.SRI_AMBIENTE
-        etree.SubElement(info_tributaria, "tipoEmision").text = "1"
-        etree.SubElement(info_tributaria, "razonSocial").text = emisor_razon_social
-        etree.SubElement(info_tributaria, "nombreComercial").text = emisor_nombre_comercial
-        etree.SubElement(info_tributaria, "ruc").text = emisor_ruc
-        etree.SubElement(info_tributaria, "claveAcceso").text = clave_acceso
-        etree.SubElement(info_tributaria, "codDoc").text = "01"
-        etree.SubElement(info_tributaria, "estab").text = settings.SRI_SERIE_ESTABLECIMIENTO
-        etree.SubElement(info_tributaria, "ptoEmi").text = settings.SRI_SERIE_PUNTO_EMISION
-        etree.SubElement(info_tributaria, "secuencial").text = nro_factura_secuencial.zfill(9)
-        etree.SubElement(info_tributaria, "dirMatriz").text = emisor_dir_matriz
-        
-        info_factura = etree.SubElement(xml_factura, "infoFactura")
-        etree.SubElement(info_factura, "fechaEmision").text = factura.fecha_emision.strftime('%d/%m/%Y')
-        etree.SubElement(info_factura, "dirEstablecimiento").text = emisor_dir_matriz
-        etree.SubElement(info_factura, "obligadoContabilidad").text = "SI"
-        etree.SubElement(info_factura, "tipoIdentificacionComprador").text = "05"
-        etree.SubElement(info_factura, "razonSocialComprador").text = socio.nombre_completo()
-        etree.SubElement(info_factura, "identificacionComprador").text = socio.cedula
-        etree.SubElement(info_factura, "totalSinImpuestos").text = f"{factura.subtotal:.2f}"
-        etree.SubElement(info_factura, "totalDescuento").text = "0.00"
-        
-        total_con_impuestos = etree.SubElement(info_factura, "totalConImpuestos")
-        total_impuesto = etree.SubElement(total_con_impuestos, "totalImpuesto")
-        etree.SubElement(total_impuesto, "codigo").text = "2"
-        etree.SubElement(total_impuesto, "codigoPorcentaje").text = "0"
-        etree.SubElement(total_impuesto, "baseImponible").text = f"{factura.subtotal:.2f}"
-        etree.SubElement(total_impuesto, "valor").text = "0.00"
-        
-        etree.SubElement(info_factura, "propina").text = "0.00"
-        etree.SubElement(info_factura, "importeTotal").text = f"{factura.total:.2f}"
-        etree.SubElement(info_factura, "moneda").text = "DOLAR"
-        
-        pagos = etree.SubElement(info_factura, "pagos")
-        pago = etree.SubElement(pagos, "pago")
-        etree.SubElement(pago, "formaPago").text = "01"
-        etree.SubElement(pago, "total").text = f"{factura.total:.2f}"
+        """Construye el XML v1.1.0 usando lxml"""
+        try:
+            # LÓGICA DE SECUENCIAL (OFFSET CONFIGURABLE)
+            # Permite evitar duplicados en pruebas sumando un valor base al ID
+            secuencia_inicio = getattr(settings, 'SRI_SECUENCIA_INICIO', 0)
+            numero_secuencial = secuencia_inicio + int(factura.id)
+            nro_factura_secuencial = str(numero_secuencial)
 
-        detalles = etree.SubElement(xml_factura, "detalles")
-        for i, detalle_entidad in enumerate(factura.detalles, 1):
-            detalle_xml = etree.SubElement(detalles, "detalle")
-            etree.SubElement(detalle_xml, "codigoPrincipal").text = str(i)
-            etree.SubElement(detalle_xml, "descripcion").text = detalle_entidad.concepto[:300]
-            etree.SubElement(detalle_xml, "cantidad").text = f"{detalle_entidad.cantidad:.2f}"
-            etree.SubElement(detalle_xml, "precioUnitario").text = f"{detalle_entidad.precio_unitario:.4f}"
-            etree.SubElement(detalle_xml, "descuento").text = "0.00"
-            etree.SubElement(detalle_xml, "precioTotalSinImpuesto").text = f"{detalle_entidad.subtotal:.2f}"
+            if factura.sri_clave_acceso:
+                clave_acceso = factura.sri_clave_acceso
+            else:
+                clave_acceso = self.generar_clave_acceso(
+                    fecha_emision=factura.fecha_emision,
+                    nro_factura=str(numero_secuencial)
+                )
+
+            # Nodo Raíz
+            xml_factura = etree.Element("factura", id="comprobante", version="1.1.0")
+
+            # Info Tributaria
+            info_tributaria = etree.SubElement(xml_factura, "infoTributaria")
+            etree.SubElement(info_tributaria, "ambiente").text = str(settings.SRI_AMBIENTE)
+            etree.SubElement(info_tributaria, "tipoEmision").text = "1"
+            etree.SubElement(info_tributaria, "razonSocial").text = settings.SRI_EMISOR_RAZON_SOCIAL
+            etree.SubElement(info_tributaria, "nombreComercial").text = settings.SRI_NOMBRE_COMERCIAL
+            etree.SubElement(info_tributaria, "ruc").text = emisor_ruc
+            etree.SubElement(info_tributaria, "claveAcceso").text = clave_acceso
+            etree.SubElement(info_tributaria, "codDoc").text = "01"
+            etree.SubElement(info_tributaria, "estab").text = settings.SRI_SERIE_ESTABLECIMIENTO
+            etree.SubElement(info_tributaria, "ptoEmi").text = settings.SRI_SERIE_PUNTO_EMISION
+            etree.SubElement(info_tributaria, "secuencial").text = nro_factura_secuencial.zfill(9)
+            etree.SubElement(info_tributaria, "dirMatriz").text = settings.SRI_EMISOR_DIRECCION_MATRIZ
+
+            # Info Factura
+            info_factura = etree.SubElement(xml_factura, "infoFactura")
+            etree.SubElement(info_factura, "fechaEmision").text = factura.fecha_emision.strftime('%d/%m/%Y')
+            etree.SubElement(info_factura, "dirEstablecimiento").text = settings.SRI_EMISOR_DIRECCION_MATRIZ
+            etree.SubElement(info_factura, "obligadoContabilidad").text = getattr(settings, 'SRI_OBLIGADO_CONTABILIDAD', 'NO')
+            # LÓGICA DINÁMICA DE IDENTIFICACIÓN
+            # Tabla 6 del SRI
+            codigo_tipo_id = "05" # Default Cédula
             
-            impuestos_detalle = etree.SubElement(detalle_xml, "impuestos")
-            impuesto_detalle = etree.SubElement(impuestos_detalle, "impuesto")
-            etree.SubElement(impuesto_detalle, "codigo").text = "2"
-            etree.SubElement(impuesto_detalle, "codigoPorcentaje").text = "0"
-            etree.SubElement(impuesto_detalle, "tarifa").text = "0"
-            etree.SubElement(impuesto_detalle, "baseImponible").text = f"{detalle_entidad.subtotal:.2f}"
-            etree.SubElement(impuesto_detalle, "valor").text = "0.00"
+            # Normalizamos a mayúsculas por si acaso
+            tipo = str(socio.tipo_identificacion).upper()
+            
+            if 'RUC' in tipo or tipo == 'R':
+                codigo_tipo_id = "04"
+            elif 'PASAPORTE' in tipo or tipo == 'P':
+                codigo_tipo_id = "06"
 
-        xml_string = etree.tostring(xml_factura, encoding="UTF-8", xml_declaration=True, pretty_print=True)
-        return xml_string.decode("utf-8"), clave_acceso
+            etree.SubElement(info_factura, "tipoIdentificacionComprador").text = codigo_tipo_id
+            
+            nombre_completo = f"{socio.nombres} {socio.apellidos}".strip()
+            etree.SubElement(info_factura, "razonSocialComprador").text = nombre_completo
+            
+            # Usamos el nuevo campo 'identificacion'
+            etree.SubElement(info_factura, "identificacionComprador").text = socio.identificacion
+            etree.SubElement(info_factura, "totalSinImpuestos").text = f"{factura.subtotal:.2f}"
+            etree.SubElement(info_factura, "totalDescuento").text = "0.00"
 
-    # --- MÉTODO 2: Firma Digital (CORREGIDO OTRA VEZ) ---
-    def _firmar_xml(self, xml_string: str) -> str:
+            # Totales con Impuestos
+            total_con_impuestos = etree.SubElement(info_factura, "totalConImpuestos")
+            total_impuesto = etree.SubElement(total_con_impuestos, "totalImpuesto")
+            etree.SubElement(total_impuesto, "codigo").text = "2" # IVA
+            etree.SubElement(total_impuesto, "codigoPorcentaje").text = "0" # 0% (Juntas de Agua suelen ser 0%)
+            etree.SubElement(total_impuesto, "baseImponible").text = f"{factura.subtotal:.2f}"
+            etree.SubElement(total_impuesto, "valor").text = "0.00"
+
+            etree.SubElement(info_factura, "propina").text = "0.00"
+            etree.SubElement(info_factura, "importeTotal").text = f"{factura.total:.2f}"
+            etree.SubElement(info_factura, "moneda").text = "DOLAR"
+
+            # Pagos
+            pagos = etree.SubElement(info_factura, "pagos")
+            pago = etree.SubElement(pagos, "pago")
+            etree.SubElement(pago, "formaPago").text = "01" # Sin utilización del sistema financiero (Efectivo)
+            etree.SubElement(pago, "total").text = f"{factura.total:.2f}"
+
+            # Detalles
+            detalles = etree.SubElement(xml_factura, "detalles")
+            for i, detalle_entidad in enumerate(factura.detalles, 1):
+                detalle_xml = etree.SubElement(detalles, "detalle")
+                etree.SubElement(detalle_xml, "codigoPrincipal").text = str(i)
+                etree.SubElement(detalle_xml, "descripcion").text = detalle_entidad.concepto[:300]
+                etree.SubElement(detalle_xml, "cantidad").text = f"{detalle_entidad.cantidad:.2f}"
+                etree.SubElement(detalle_xml, "precioUnitario").text = f"{detalle_entidad.precio_unitario:.4f}"
+                etree.SubElement(detalle_xml, "descuento").text = "0.00"
+                etree.SubElement(detalle_xml, "precioTotalSinImpuesto").text = f"{detalle_entidad.subtotal:.2f}"
+
+                impuestos_detalle = etree.SubElement(detalle_xml, "impuestos")
+                impuesto_detalle = etree.SubElement(impuestos_detalle, "impuesto")
+                etree.SubElement(impuesto_detalle, "codigo").text = "2"
+                etree.SubElement(impuesto_detalle, "codigoPorcentaje").text = "0"
+                etree.SubElement(impuesto_detalle, "tarifa").text = "0"
+                etree.SubElement(impuesto_detalle, "baseImponible").text = f"{detalle_entidad.subtotal:.2f}"
+                etree.SubElement(impuesto_detalle, "valor").text = "0.00"
+
+            # Convertir a String
+            xml_bytes = etree.tostring(xml_factura, encoding="UTF-8", xml_declaration=True, pretty_print=False)
+            # Reemplazar comillas simples por dobles (SRI a veces molesta con esto)
+            xml_str = xml_bytes.decode("utf-8").replace("'", '"')
+
+            return xml_str, clave_acceso
+
+        except Exception as e:
+            logger.error(f"Error generando XML: {e}")
+            raise ValueError(f"Error generando estructura XML: {str(e)}")
+
+    # --- 3. FIRMA DIGITAL (Lógica JAVA del Proyecto A Inyectada) ---
+
+    def _firmar_xml_java(self, xml_string: str, clave_acceso: str) -> str:
         """
-        Función PRIVADA para aplicar la firma XAdES-BES (PKCS#12) usando xmlsec.
+        Ejecuta el archivo .jar para firmar el XML.
         """
-        logger.info(f"Firmando XML...")
-        
-        doc = etree.fromstring(xml_string.encode("utf-8"))
-        
-        signature_node = xmlsec.template.create(
-            doc,
-            xmlsec.constants.TransformExclC14N,
-            xmlsec.constants.TransformRsaSha1
-        )
-        doc.append(signature_node)
-        
-        ref = xmlsec.template.add_reference(
-            signature_node, 
-            xmlsec.constants.TransformSha1
-        )
-        xmlsec.template.add_transform(ref, xmlsec.constants.TransformEnveloped)
+        logger.info("Iniciando proceso de firma con Java...")
 
-        # 5. Asegurar que el nodo KeyInfo exista.
-        #    xmlsec lo llenará automáticamente con el certificado
-        #    cuando carguemos la llave P12.
-        xmlsec.template.ensure_key_info(signature_node)
-        
-        # ¡HEMOS ELIMINADO LAS LÍNEAS DE X509Data DE AQUÍ!
+        # 1. Crear archivo temporal para el XML sin firma
+        with NamedTemporaryFile(suffix='.xml', delete=False) as temp_input:
+            temp_input.write(xml_string.encode('utf-8'))
+            temp_input_path = temp_input.name
 
-        # 6. Crear el contexto de firma
-        ctx = xmlsec.SignatureContext()
+        # El JAR guarda el output en la misma carpeta que el input, o podemos definir nombre
+        # El Proyecto A usaba: [java, -jar, jar, p12, pass, xml_input, path_base, nombre_salida]
+
+        nombre_xml_salida = f"{clave_acceso}_signed.xml"
+        # Directorio temporal donde se guardará el firmado
+        output_dir = os.path.dirname(temp_input_path)
+        path_xml_firmado = os.path.join(output_dir, nombre_xml_salida)
 
         try:
-            # --- INICIO DE CÓDIGO DE DEPURACIÓN ---
-            # Vamos a imprimir los valores JUSTO antes de usarlos
-            print("--- INICIANDO DEPURACIÓN DE FIRMA ---")
-            print(f"Ruta de la Firma (Path): {self.auth.firma_path}")
-            print(f"Contraseña de la Firma (Pass): {self.auth.firma_pass}")
-            print("--- FIN DE DEPURACIÓN ---")
-            # --- FIN DE CÓDIGO DE DEPURACIÓN ---
+            # Comando exacto para el JAR (Adaptado de sri.py del Proy A)
+            commands = [
+                'java',
+                '-jar', self.jar_path,
+                self.auth.firma_path,
+                self.auth.firma_pass,
+                temp_input_path,
+                output_dir,
+                nombre_xml_salida
+            ]
 
-            # 7. Cargar la llave privada desde el archivo .p12
-            key = xmlsec.Key.from_file(
-                self.auth.firma_path, 
-                xmlsec.constants.KeyDataFormatPkcs12, 
-                self.auth.firma_pass
-            )
-            ctx.key = key
+            # Ejecutar Java
+            result = subprocess.run(commands, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                logger.error(f"Error Java STDERR: {result.stderr}")
+                logger.error(f"Error Java STDOUT: {result.stdout}")
+                raise Exception(f"Fallo al firmar con Java: {result.stderr}")
+
+            # Leer el archivo firmado resultante
+            if not os.path.exists(path_xml_firmado):
+                 # A veces el jar falla silenciosamente, verificar output
+                 raise FileNotFoundError(f"El JAR no generó el archivo firmado en {path_xml_firmado}. Output: {result.stdout}")
+
+            with open(path_xml_firmado, 'r', encoding='utf-8') as f:
+                xml_firmado = f.read()
+
+            return xml_firmado
+
         except Exception as e:
-            # ¡EL CÓDIGO ENTRÓ AQUÍ!
-            logger.error(f"Error al cargar la firma digital P12: {e}. Revisa la ruta y la contraseña en .env")
-            # Y luego lanzamos nuestro propio error
-            raise IOError("No se pudo cargar la firma digital. Revisa la ruta y la contraseña.")
+            logger.error(f"Excepción en firma Java: {e}")
+            raise e
+        finally:
+            # Limpieza de archivos temporales
+            if os.path.exists(temp_input_path):
+                os.remove(temp_input_path)
+            if os.path.exists(path_xml_firmado):
+                os.remove(path_xml_firmado)
 
-        # 8. Firmar el documento
-        ctx.sign(signature_node)
-        
-        logger.info("XML firmado exitosamente.")
-        signed_xml_string = etree.tostring(doc, encoding="UTF-8", xml_declaration=False)
-        return signed_xml_string.decode("utf-8")
+    # --- 4. ENVÍO Y PARSEO (SOAP) ---
 
-    # --- MÉTODO 3: Envío al SRI ---
     def _enviar_comprobante_al_sri(self, xml_firmado: str) -> dict:
-        logger.info("Enviando comprobante al SRI (Recepción)...")
-        
+        logger.info("Enviando XML firmado al SRI...")
         try:
-            xml_base64 = base64.b64encode(xml_firmado.encode("utf-8")).decode("utf-8")
-            respuesta_soap = self.soap_client_recepcion.service.validarComprobante(xml_base64)
-            logger.info(f"Respuesta del SRI (Recepción) recibida: {respuesta_soap['estado']}")
-            return respuesta_soap
-
-        except zeep.exceptions.Fault as fault:
-            logger.error(f"Error SOAP al enviar al SRI: {fault.message}")
-            return {"estado": "ERROR_SOAP", "mensaje": fault.message}
+            # El SRI espera el XML en base64
+            xml_b64 = base64.b64encode(xml_firmado.encode('utf-8')).decode('utf-8')
+            response = self.soap_client_recepcion.service.validarComprobante(xml_b64)
+            return response
         except Exception as e:
-            logger.error(f"Error de conexión o timeout con el SRI (Recepción): {e}")
+            logger.error(f"Error SOAP Recepción: {e}")
             return {"estado": "ERROR_CONEXION", "mensaje": str(e)}
 
-    # --- MÉTODO 4: Parseo de Respuesta ---
-    def _parsear_respuesta_sri(self, respuesta_soap: dict, clave_acceso: str, xml_enviado: str) -> SRIResponse:
-        estado = respuesta_soap.get("estado")
-        xml_respuesta_str = str(respuesta_soap)
+    def _parsear_respuesta(self, response, clave_acceso, xml_enviado):
+        # Mapeo de la respuesta Zeep a nuestra Entidad SRIResponse
+        logger.info(f"DEBUG SRI - Estructura Respuesta: {response}")
         
-        if estado == "RECIBIDA":
-            return SRIResponse(
-                exito=True, 
-                autorizacion_id=clave_acceso,
-                estado=estado, 
-                mensaje_error=None,
-                xml_enviado=xml_enviado,
-                xml_respuesta=xml_respuesta_str
-            )
-        
-        if estado == "DEVUELTA":
-            try:
-                mensaje = respuesta_soap['comprobantes']['comprobante'][0]['mensajes']['mensaje'][0]['mensaje']
-                info_adicional = respuesta_soap['comprobantes']['comprobante'][0]['mensajes']['mensaje'][0]['informacionAdicional']
-                error_completo = f"{mensaje} - {info_adicional}"
-            except Exception:
-                error_completo = xml_respuesta_str
-                
-            return SRIResponse(
-                exito=False,
-                autorizacion_id=clave_acceso,
-                estado=estado,
-                mensaje_error=error_completo,
-                xml_enviado=xml_enviado,
-                xml_respuesta=xml_respuesta_str
-            )
-
-        return SRIResponse(
-            exito=False,
-            autorizacion_id=clave_acceso,
-            estado=estado or "ERROR_DESCONOCIDO",
-            mensaje_error=respuesta_soap.get("mensaje", "Error desconocido."),
-            xml_enviado=xml_enviado,
-            xml_respuesta=xml_respuesta_str
-        )
-    
-    # --- MÉTODOS PÚBLICOS DE LA INTERFAZ ---
-    
-    def enviar_factura(self, factura: Factura, socio: Socio) -> SRIResponse:
         try:
-            xml_para_firmar, clave_acceso = self._generar_xml_factura(factura, socio)
-            xml_firmado = self._firmar_xml(xml_para_firmar)
-            respuesta_soap = self._enviar_comprobante_al_sri(xml_firmado)
-            return self._parsear_respuesta_sri(respuesta_soap, clave_acceso, xml_firmado)
+            estado = response.estado # RECIBIDA / DEVUELTA
+            mensajes = []
+
+            # Lógica recursiva/robusta para extraer mensajes de error/advertencia
+            try:
+                # La estructura puede variar, a veces es lista, a veces objeto único
+                comprobantes = getattr(response, 'comprobantes', None)
+                if comprobantes and hasattr(comprobantes, 'comprobante'):
+                    lista_comprobantes = comprobantes.comprobante
+                    # Iterar comprobantes (usualmente 1 en envío sincrono)
+                    for comp in lista_comprobantes:
+                        msgs = getattr(comp, 'mensajes', None)
+                        if msgs and hasattr(msgs, 'mensaje'):
+                            for m in msgs.mensaje:
+                                # Extraer campos clave
+                                texto = getattr(m, 'mensaje', 'Sin mensaje')
+                                info_ad = getattr(m, 'informacionAdicional', '')
+                                tipo = getattr(m, 'tipo', 'INFO')
+                                identificador = getattr(m, 'identificador', '')
+                                
+                                mensaje_formateado = f"[{tipo}] {texto}"
+                                if info_ad:
+                                    mensaje_formateado += f" ({info_ad})"
+                                if identificador:
+                                    mensaje_formateado += f" [ID:{identificador}]"
+                                
+                                mensajes.append(mensaje_formateado)
+            except Exception as e_msg:
+                mensajes.append(f"Error parseando detalles de mensajes: {str(e_msg)}")
+                # Fallback: intentar convertir a string todo el objeto response
+                mensajes.append(str(response))
+
+
+            # Serialización correcta a Dict (para que REST Framework lo renderice como JSON anidado)
+            try:
+                # serialize_object devuelve un dict estándar de Python (listas, dicts, int, etc.)
+                xml_response_dict = serialize_object(response)
+            except:
+                # Fallback: si falla, devolvemos un dict con el string
+                xml_response_dict = {"raw": str(response)}
+
+            if estado == 'RECIBIDA':
+                return SRIResponse(
+                    exito=True, autorizacion_id=clave_acceso, estado=estado,
+                    mensaje_error=None, xml_enviado=xml_enviado, xml_respuesta=xml_response_dict
+                )
+            else:
+                # Estado DEVUELTA
+                mensaje_final = " | ".join(mensajes)
+                if not mensaje_final:
+                    mensaje_final = "Sin detalles de error (Revisar logs)"
+                    
+                return SRIResponse(
+                    exito=False, autorizacion_id=clave_acceso, estado=estado,
+                    mensaje_error=mensaje_final, xml_enviado=xml_enviado, xml_respuesta=xml_response_dict
+                )
 
         except Exception as e:
-            logger.error(f"Fallo total en envío al SRI para factura {factura.id}: {e}", exc_info=True)
+             logger.error(f"Error crítico parseando respuesta SRI: {e}")
+             return SRIResponse(
+                exito=False, autorizacion_id=clave_acceso, estado="ERROR_PARSE_LOCAL",
+                mensaje_error=f"Excepción local: {str(e)}", xml_enviado=xml_enviado, xml_respuesta=str(response)
+            )
+
+    # --- MÉTODOS PÚBLICOS DE INTERFACE ---
+
+    def enviar_factura(self, factura: Factura, socio: Socio) -> SRIResponse:
+        try:
+            # 1. Generar
+            xml_sin_firma, clave_acceso = self._generar_xml_factura(factura, socio)
+
+            # 2. Firmar (JAVA)
+            xml_firmado = self._firmar_xml_java(xml_sin_firma, clave_acceso)
+
+            # 3. Enviar
+            soap_response = self._enviar_comprobante_al_sri(xml_firmado)
+
+            # 4. Parsear
+            return self._parsear_respuesta(soap_response, clave_acceso, xml_firmado)
+
+        except Exception as e:
+            logger.error(f"Fallo crítico enviando factura: {e}")
             return SRIResponse(
-                exito=False,
-                autorizacion_id=None,
-                estado="ERROR_INTERNO",
-                mensaje_error=str(e),
-                xml_enviado=None,
-                xml_respuesta=None
+                exito=False, autorizacion_id=None, estado="EXCEPTION",
+                mensaje_error=str(e), xml_enviado=None, xml_respuesta=None
             )
 
     def consultar_autorizacion(self, clave_acceso: str) -> SRIResponse:
-        logger.info(f"Consultando autorización para clave: {clave_acceso}")
+        # Implementación simple de consulta
         try:
-            respuesta_soap = self.soap_client_autorizacion.service.autorizacionComprobante(clave_acceso)
-            
-            estado = respuesta_soap.autorizaciones.autorizacion[0].estado
-            if estado == "AUTORIZADO":
-                 return SRIResponse(
-                    exito=True, 
-                    autorizacion_id=clave_acceso,
-                    estado=estado, 
-                    mensaje_error=None,
-                    xml_enviado=None,
-                    xml_respuesta=str(respuesta_soap)
-                )
-            else: # NO AUTORIZADO
-                mensaje = respuesta_soap.autorizaciones.autorizacion[0].mensajes.mensaje[0].mensajes.mensaje[0].mensaje
-                info_adicional = respuesta_soap.autorizaciones.autorizacion[0].mensajes.mensaje[0].informacionAdicional
-                error_completo = f"{mensaje} - {info_adicional}"
+            response = self.soap_client_autorizacion.service.autorizacionComprobante(clave_acceso)
+            # Lógica similar de parseo... (simplificada por brevedad)
+            autorizaciones = response.autorizaciones
+            if autorizaciones and len(autorizaciones.autorizacion) > 0:
+                auth = autorizaciones.autorizacion[0]
                 return SRIResponse(
-                    exito=False,
+                    exito=(auth.estado == "AUTORIZADO"),
                     autorizacion_id=clave_acceso,
-                    estado=estado,
-                    mensaje_error=error_completo,
+                    estado=auth.estado,
+                    mensaje_error=None if auth.estado == "AUTORIZADO" else "No autorizado",
                     xml_enviado=None,
-                    xml_respuesta=str(respuesta_soap)
+                    xml_respuesta=str(auth)
                 )
-
-        except zeep.exceptions.Fault as fault:
-            logger.error(f"Error SOAP al consultar autorización: {fault.message}")
-            return SRIResponse(exito=False, autorizacion_id=clave_acceso, estado="ERROR_SOAP", mensaje_error=fault.message, xml_enviado=None, xml_respuesta=None)
+            return SRIResponse(exito=False, autorizacion_id=clave_acceso, estado="NO_ENCONTRADO", mensaje_error="No existe", xml_enviado=None, xml_respuesta=None)
         except Exception as e:
-            logger.error(f"Error de conexión o timeout (Autorización): {e}", exc_info=True)
-            return SRIResponse(exito=False, autorizacion_id=clave_acceso, estado="ERROR_CONEXION", mensaje_error=str(e), xml_enviado=None, xml_respuesta=None)
+             return SRIResponse(exito=False, autorizacion_id=clave_acceso, estado="ERROR", mensaje_error=str(e), xml_enviado=None, xml_respuesta=None)

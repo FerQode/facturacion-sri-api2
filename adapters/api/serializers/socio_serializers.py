@@ -4,48 +4,92 @@ from core.shared.enums import RolUsuario
 
 class SocioSerializer(serializers.Serializer):
     """
-    Traduce entre JSON y los DTOs de Socio.
-    Maneja la validación de entrada y el formato de salida.
+    Serializer de SALIDA (Lectura).
+    Muestra los datos del Socio tal como vienen del DTO.
     """
-    # Campos de Salida (leídos desde el SocioDTO)
     id = serializers.IntegerField(read_only=True)
-    cedula = serializers.CharField(max_length=10)
+    identificacion = serializers.CharField(max_length=13)
+    tipo_identificacion = serializers.CharField(max_length=1)
     nombres = serializers.CharField(max_length=100)
     apellidos = serializers.CharField(max_length=100)
-    barrio = serializers.CharField(max_length=100)
+    
+    # --- CAMBIOS DE SINCRONIZACIÓN ---
+    # POR ESTA LÍNEA (Usamos source para mantener el nombre 'barrio' en el JSON):
+    barrio = serializers.IntegerField(source='barrio_id', allow_null=True)
+    direccion = serializers.CharField(max_length=200, allow_null=True, required=False) # Nueva dirección
+    # ---------------------------------
+
     rol = serializers.ChoiceField(choices=[rol.value for rol in RolUsuario])
     email = serializers.EmailField(allow_blank=True, required=False)
     telefono = serializers.CharField(max_length=20, allow_blank=True, required=False)
     esta_activo = serializers.BooleanField()
 
-    # Este serializer no se usará para 'update' (PUT/PATCH),
-    # ya que la lógica de "parcheo" está en el Caso de Uso.
-    # Crearemos uno separado para 'update' si es necesario.
-
 class CrearSocioSerializer(serializers.Serializer):
-    """ Serializer específico para crear un Socio """
-    cedula = serializers.CharField(max_length=10)
+    """ 
+    Serializer de ENTRADA (Creación).
+    Valida que los datos sean correctos antes de pasar al Caso de Uso.
+    """
+    identificacion = serializers.CharField(max_length=13)
+    tipo_identificacion = serializers.ChoiceField(choices=['C', 'R', 'P'], default='C')
     nombres = serializers.CharField(max_length=100)
     apellidos = serializers.CharField(max_length=100)
-    barrio = serializers.CharField(max_length=100)
+    
+    # --- CAMBIOS DE SINCRONIZACIÓN ---
+    # El Frontend debe enviar el ID del barrio seleccionado en el dropdown
+    barrio_id = serializers.IntegerField() 
+    direccion = serializers.CharField(max_length=200) # Obligatorio al crear
+    # ---------------------------------
+
     rol = serializers.ChoiceField(choices=[rol.value for rol in RolUsuario])
     email = serializers.EmailField(allow_blank=True, required=False)
     telefono = serializers.CharField(max_length=20, allow_blank=True, required=False)
+    
+    # Campos opcionales de autenticación
+    username = serializers.CharField(required=False)
+    password = serializers.CharField(required=False)
     
     def validate_rol(self, value):
         """ Convierte el string (ej: "Socio") de vuelta a un Enum """
         return RolUsuario(value)
 
+    def validate(self, data):
+        """ 
+        Validación cruzada y algorítmica usando el Dominio Puro 
+        """
+        from core.domain.socio import Socio
+        
+        # Validamos usando la entidad de dominio (DRY - Don't Repeat Yourself)
+        try:
+            # Creamos una instancia "dummy" solo para validar
+            Socio(
+                id=None,
+                identificacion=data.get('identificacion'),
+                tipo_identificacion=data.get('tipo_identificacion'),
+                nombres=data.get('nombres'),
+                apellidos=data.get('apellidos')
+            )
+        except ValueError as e:
+            raise serializers.ValidationError({"identificacion": str(e)})
+
+        return data
+
 class ActualizarSocioSerializer(serializers.Serializer):
-    """ Serializer para actualizar (PATCH). Todos los campos opcionales. """
+    """ 
+    Serializer de ENTRADA (Actualización Parcial - PATCH). 
+    Todos los campos son opcionales.
+    """
     nombres = serializers.CharField(max_length=100, required=False)
     apellidos = serializers.CharField(max_length=100, required=False)
-    barrio = serializers.CharField(max_length=100, required=False)
+    
+    # --- CAMBIOS DE SINCRONIZACIÓN ---
+    barrio_id = serializers.IntegerField(required=False)
+    direccion = serializers.CharField(max_length=200, required=False)
+    # ---------------------------------
+
     rol = serializers.ChoiceField(choices=[rol.value for rol in RolUsuario], required=False)
     email = serializers.EmailField(allow_blank=True, required=False)
     telefono = serializers.CharField(max_length=20, allow_blank=True, required=False)
     esta_activo = serializers.BooleanField(required=False)
     
     def validate_rol(self, value):
-        """ Convierte el string (ej: "Socio") de vuelta a un Enum """
         return RolUsuario(value)

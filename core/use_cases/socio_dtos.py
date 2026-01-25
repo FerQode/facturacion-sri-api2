@@ -1,41 +1,70 @@
 # core/use_cases/socio_dtos.py
+
 from dataclasses import dataclass
 from typing import Optional
 from core.shared.enums import RolUsuario
 
-# DTO para la respuesta (lo que enviamos al exterior)
+# =============================================================================
+# 1. DTO DE SALIDA (Respuesta al Frontend)
+# =============================================================================
 @dataclass(frozen=True)
 class SocioDTO:
     id: int
-    cedula: str
+    identificacion: str
+    tipo_identificacion: str
     nombres: str
     apellidos: str
     email: Optional[str]
     telefono: Optional[str]
-    barrio: str
-    rol: str # Enviamos el valor simple (string)
+    
+    # --- UBICACIÓN ---
+    barrio_id: Optional[int]    # ID para preseleccionar dropdown en frontend
+    direccion: Optional[str]    # Dirección específica
+    # -----------------
+    
+    rol: str 
     esta_activo: bool
+    
+    # ✅ NUEVO CAMPO (Soluciona el TypeError)
+    # Permite al frontend saber qué ID de usuario (login) tiene asociado este socio
+    usuario_id: Optional[int] = None 
 
-# DTO de entrada para crear un socio
+# =============================================================================
+# 2. DTO DE ENTRADA (Creación)
+# =============================================================================
 @dataclass(frozen=True)
 class CrearSocioDTO:
-    cedula: str
+    identificacion: str
+    tipo_identificacion: str
     nombres: str
     apellidos: str
-    barrio: str
-    rol: RolUsuario # Usamos el Enum para la lógica interna
+    
+    # --- UBICACIÓN ---
+    barrio_id: int      # Obligatorio
+    direccion: str      # Obligatorio
+    # -----------------
+    
+    rol: RolUsuario 
     email: Optional[str] = None
     telefono: Optional[str] = None
-    # --- NUEVOS CAMPOS ---
-    username: Optional[str] = None # Opcional, si no viene usamos la cédula
-    password: Optional[str] = None # Opcional, si no viene generamos una
+    
+    # Credenciales opcionales (si no se envían, se usa la cédula)
+    username: Optional[str] = None 
+    password: Optional[str] = None 
 
-# DTO de entrada para actualizar (todos los campos opcionales)
+# =============================================================================
+# 3. DTO DE ENTRADA (Actualización)
+# =============================================================================
 @dataclass(frozen=True)
 class ActualizarSocioDTO:
     nombres: Optional[str] = None
     apellidos: Optional[str] = None
-    barrio: Optional[str] = None
+    
+    # --- UBICACIÓN ---
+    barrio_id: Optional[int] = None
+    direccion: Optional[str] = None
+    # -----------------
+    
     rol: Optional[RolUsuario] = None
     email: Optional[str] = None
     telefono: Optional[str] = None

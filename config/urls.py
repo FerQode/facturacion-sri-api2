@@ -1,41 +1,50 @@
-"""
-URL configuration for config project.
+# config/urls.py
 
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/5.2/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
-"""
 from django.contrib import admin
 from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
 
-# --- AÑADIDO: Importamos nuestra vista personalizada ---
+# 1. Autenticación y Seguridad (JWT)
+from rest_framework_simplejwt.views import TokenRefreshView
 from adapters.api.views.auth_views import CustomTokenObtainPairView
 
-# Importamos la vista de refresh (esa la usamos tal cual de la librería)
-from rest_framework_simplejwt.views import (
-    TokenRefreshView,
+# 2. Documentación Automática (Swagger / OpenAPI)
+from rest_framework import permissions
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+
+# --- Configuración de Metadatos de la API (Swagger) ---
+schema_view = get_schema_view(
+   openapi.Info(
+      title="API Junta de Agua 'El Arbolito' & SRI",
+      default_version='v1',
+      description="Documentación técnica del Sistema de Gestión de Agua y Facturación Electrónica.",
+      contact=openapi.Contact(email="admin@juntaarbolito.com"),
+      license=openapi.License(name="BSD License"),
+   ),
+   public=True,
+   permission_classes=(permissions.AllowAny,),
 )
 
+# --- LISTA ÚNICA DE RUTAS ---
 urlpatterns = [
+    # 1. Panel de Administración
     path('admin/', admin.site.urls),
-    
-    # --- MODIFICADO: Endpoint de Login ---
-    # Usamos CustomTokenObtainPairView en lugar de la vista por defecto (TokenObtainPairView).
-    # Cuando el frontend llame aquí, recibirá el token con 'rol' y 'socio_id' en el payload.
+
+    # 2. Autenticación (JWT)
     path('api/v1/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    
-    # Endpoint de Refresh (estándar)
     path('api/v1/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    
-    # Rutas de la API (nuestros adaptadores)
+
+    # 3. Endpoints de Negocio (Tus Adaptadores)
     path('api/v1/', include('adapters.api.urls')),
+
+    # 4. Documentación
+    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 ]
+
+# --- CONFIGURACIÓN DE MEDIA (FOTOS) EN MODO DEBUG ---
+# Esto debe ir AL FINAL para sumar las rutas estáticas a la lista urlpatterns existente.
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

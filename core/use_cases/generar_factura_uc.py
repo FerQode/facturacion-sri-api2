@@ -1,58 +1,104 @@
-# # core/use_cases/generar_factura_uc.py
-# from core.domain.factura import Factura
-# from core.interfaces.repositories import (
-#     IFacturaRepository, ILecturaRepository, IMedidorRepository, ISocioRepository
-# )
-# from core.use_cases.dtos import GenerarFacturaDesdeLecturaDTO
-# from core.shared.exceptions import LecturaNoEncontradaError, MedidorNoEncontradoError
+# core/use_cases/generar_factura_uc.py
 
-# class GenerarFacturaDesdeLecturaUseCase:
-#     """
-#     Caso de Uso para generar una Factura a partir de una Lectura registrada.
-#     """
-#     def __init__(
-#         self,
-#         factura_repo: IFacturaRepository,
-#         lectura_repo: ILecturaRepository,
-#         medidor_repo: IMedidorRepository,
-#         socio_repo: ISocioRepository
-#     ):
-#         self.factura_repo = factura_repo
-#         self.lectura_repo = lectura_repo
-#         self.medidor_repo = medidor_repo
-#         self.socio_repo = socio_repo
+from datetime import date
+from decimal import Decimal
+from typing import Optional
+from django.utils import timezone
 
-#     def execute(self, input_dto: GenerarFacturaDesdeLecturaDTO) -> Factura:
-#         # 1. Obtener la lectura base
-#         lectura = self.lectura_repo.get_by_id(input_dto.lectura_id)
-#         if not lectura:
-#             raise LecturaNoEncontradaError("Lectura no encontrada.")
+# Django Transaction (Para atomicidad real)
+from django.db import transaction
 
-#         # 2. Obtener el medidor y el socio
-#         medidor = self.medidor_repo.get_by_id(lectura.medidor_id)
-#         if not medidor:
-#             raise MedidorNoEncontradoError("Medidor asociado a la lectura no encontrado.")
-            
-#         socio = self.socio_repo.get_by_id(medidor.socio_id)
-#         # Aquí podrías validar si el socio existe, etc.
+# Dominio
+from core.domain.factura import Factura
+from core.shared.enums import EstadoFactura
+from core.shared.exceptions import (
+    LecturaNoEncontradaError,
+    MedidorNoEncontradoError,
+    ValidacionError
+)
 
-#         # 3. Crear la Entidad Factura
-#         factura = Factura(
-#             id=None,
-#             socio_id=socio.id,
-#             medidor_id=medidor.id,
-#             fecha_emision=input_dto.fecha_emision,
-#             fecha_vencimiento=input_dto.fecha_vencimiento,
-#             lectura=lectura
-#         )
-        
-#         # 4. Delegar el CÁLCULO a la Entidad de Dominio
-#         if medidor.tiene_medidor_fisico:
-#             factura.calcular_total_con_medidor(lectura.consumo_del_mes_m3)
-#         else:
-#             factura.calcular_total_sin_medidor()
+# Interfaces
+from core.interfaces.repositories import (
+    IFacturaRepository,
+    ILecturaRepository,
+    IMedidorRepository,
+    ISocioRepository,
+    ITerrenoRepository
+)
 
-#         # 5. Guardar la factura
-#         factura_guardada = self.factura_repo.save(factura)
-        
-#         return factura_guardada
+# DTOs
+from core.use_cases.dtos import GenerarFacturaDesdeLecturaDTO
+
+class GenerarFacturaDesdeLecturaUseCase:
+    """
+    Caso de Uso Robusto: Generación de Factura con Idempotencia y Atomicidad.
+    """
+
+    def __init__(
+        self,
+        factura_repo: IFacturaRepository,
+        lectura_repo: ILecturaRepository,
+        medidor_repo: IMedidorRepository,
+        terreno_repo: ITerrenoRepository,
+        socio_repo: ISocioRepository,
+    ):
+        self.factura_repo = factura_repo
+        self.lectura_repo = lectura_repo
+        self.medidor_repo = medidor_repo
+        self.terreno_repo = terreno_repo
+        self.socio_repo = socio_repo
+
+
+    @transaction.atomic
+    def execute(self, input_dto: GenerarFacturaDesdeLecturaDTO) -> Factura:
+
+        # 1. IDEMPOTENCIA
+        factura_existente = self.factura_repo.get_by_lectura_id(input_dto.lectura_id)
+        if factura_existente:
+            return factura_existente
+
+        # 2. VALIDACIONES Y CREACIÓN
+        lectura = self.lectura_repo.get_by_id(input_dto.lectura_id)
+        if not lectura: raise LecturaNoEncontradaError(f"Lectura {input_dto.lectura_id} no encontrada.")
+
+        if lectura.esta_facturada:
+            raise ValidacionError(f"La lectura {lectura.id} ya figura como procesada.")
+
+        medidor = self.medidor_repo.get_by_id(lectura.medidor_id)
+        if not medidor: raise MedidorNoEncontradoError("Medidor no encontrado.")
+        terreno = self.terreno_repo.get_by_id(medidor.terreno_id)
+        if not terreno: raise ValidacionError("Terreno no encontrado.")
+        socio = self.socio_repo.get_by_id(terreno.socio_id)
+        if not socio: raise ValidacionError("Socio no encontrado.")
+
+        # 3. INSTANCIAR FACTURA (ESTADO PENDIENTE)
+        factura = Factura(
+            id=None,
+            socio_id=socio.id,
+            medidor_id=medidor.id,
+            lectura=lectura,
+            fecha_emision=input_dto.fecha_emision,
+            fecha_vencimiento=input_dto.fecha_vencimiento,
+            estado=EstadoFactura.PENDIENTE, # Nace debiendo
+
+            # SRI: Limpios
+            sri_ambiente=1,
+            sri_tipo_emision=1,
+            sri_clave_acceso=None,
+            sri_xml_autorizado=None,
+            sri_mensaje_error=None,
+            estado_sri="PENDIENTE_ENVIO" # Indicador para el cajero
+        )
+
+        # 4. CÁLCULOS
+        consumo_entero = int(float(lectura.consumo_del_mes_m3))
+        factura.calcular_total_con_medidor(consumo_entero)
+
+        # 5. GUARDAR
+        factura = self.factura_repo.save(factura)
+
+        # 6. CERRAR LECTURA
+        lectura.esta_facturada = True
+        self.lectura_repo.save(lectura)
+
+        return factura

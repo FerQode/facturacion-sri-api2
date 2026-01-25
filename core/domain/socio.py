@@ -1,40 +1,71 @@
 # core/domain/socio.py
-from dataclasses import dataclass, field
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import Optional
+from datetime import date
 from core.shared.enums import RolUsuario
 
 @dataclass
 class Socio:
     """
-    Entidad que representa a un socio de la junta de riego.
+    Entidad de Dominio que representa a un socio de la junta.
     """
+    # 1. CAMPOS OBLIGATORIOS
     id: Optional[int]
-    cedula: str
+    identificacion: str
+    tipo_identificacion: str
     nombres: str
     apellidos: str
-    # email y telefono son opcionales en el DTO pero aquí parecen obligatorios en tu versión anterior
-    # Si quieres que sean opcionales con default None, deben ir al final.
-    # Asumiremos que email y telefono TIENEN valor por defecto None basado en tu error.
     
-    # Campos obligatorios (sin default)
-    barrio: str
-
-    # Campos opcionales (con default) - DEBEN IR AL FINAL
+    # 2. CAMPOS OPCIONALES
     email: Optional[str] = None
     telefono: Optional[str] = None
-    rol: RolUsuario = RolUsuario.SOCIO
-    esta_activo: bool = True
     
-    # --- CAMPO NUEVO (MOVIDO AL FINAL) ---
-    usuario_id: Optional[int] = None 
-    # -------------------------------------
-    
-    # Un socio puede tener múltiples medidores (líneas de servicio)
-    medidores_ids: List[int] = field(default_factory=list)
+    # --- CAMBIO IMPORTANTE: Referencia por ID ---
+    barrio_id: Optional[int] = None
+    direccion: Optional[str] = None
+    # --------------------------------------------
 
-    def nombre_completo(self) -> str:
-        return f"{self.nombres} {self.apellidos}"
+    # Datos de Sistema
+    rol: Optional[RolUsuario] = RolUsuario.SOCIO
+    esta_activo: bool = True
+    usuario_id: Optional[int] = None 
     
-    def anadir_medidor(self, medidor_id: int):
-        if medidor_id not in self.medidores_ids:
-            self.medidores_ids.append(medidor_id)
+    # Datos demográficos extra
+    fecha_nacimiento: Optional[date] = None
+    discapacidad: bool = False
+    tercera_edad: bool = False
+
+    @property
+    def nombre_completo(self) -> str:
+        """Helper para mostrar nombre legible"""
+        return f"{self.nombres} {self.apellidos}"
+
+    def __post_init__(self):
+        """
+        Validación de Dominio Puro:
+        Asegura que la identificación sea matemáticamente válida según el algoritmo del SRI.
+        """
+        # Solo validamos si tenemos el dato (al crear/actualizar)
+        if self.identificacion and self.tipo_identificacion:
+            try:
+                # Importación diferida para no ensuciar el namespace global si no se usa
+                from stdnum.ec import ci as validador_cedula # 'ci' = Cédula de Identidad
+                from stdnum.ec import ruc as validador_ruc
+                
+                tipo = str(self.tipo_identificacion).upper()
+                
+                if 'CEDULA' in tipo or tipo == 'C':
+                    validador_cedula.validate(self.identificacion)
+                
+                elif 'RUC' in tipo or tipo == 'R':
+                    validador_ruc.validate(self.identificacion)
+                    
+                # Pasaporte no tiene algoritmo estándar público riguroso más allá de longitud
+                elif 'PASAPORTE' in tipo or tipo == 'P':
+                    if len(self.identificacion) < 5:
+                        raise ValueError("El pasaporte debe tener al menos 5 caracteres.")
+
+            except Exception as e:
+                # Re-lanzamos como ValueError para que sea capturado por capas superiores
+                # Los validadores de stdnum lanzan InvalidChecksum, InvalidLength, etc.
+                raise ValueError(f"Identificación inválida ({self.tipo_identificacion}): {str(e)}")
