@@ -30,11 +30,14 @@ class SocioViewSet(viewsets.ViewSet):
     @swagger_auto_schema(responses={200: SocioSerializer(many=True)})
     def list(self, request):
         """ GET /api/v1/socios/ """
-        repo = DjangoSocioRepository()
-        use_case = ListarSociosUseCase(repo)
-        socios_dto = use_case.execute()
-        serializer = SocioSerializer(socios_dto, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        try:
+            repo = DjangoSocioRepository()
+            use_case = ListarSociosUseCase(repo)
+            socios_dto = use_case.execute()
+            serializer = SocioSerializer(socios_dto, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @swagger_auto_schema(responses={200: SocioSerializer()})
     def retrieve(self, request, pk=None):
@@ -51,25 +54,27 @@ class SocioViewSet(viewsets.ViewSet):
     @swagger_auto_schema(request_body=CrearSocioSerializer, responses={201: SocioSerializer()})
     def create(self, request):
         """ POST /api/v1/socios/ """
-        serializer = CrearSocioSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        # MAGIA PYTHONICA: Como los campos del Serializer se llaman IGUAL
-        # que los del DTO (barrio_id, direccion), podemos desempaquetar con **
-        crear_dto = CrearSocioDTO(**serializer.validated_data)
-        
-        socio_repo = DjangoSocioRepository()
-        auth_repo = DjangoAuthRepository()
-        
-        use_case = CrearSocioUseCase(socio_repo, auth_repo)
-        
         try:
+            serializer = CrearSocioSerializer(data=request.data)
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+            # MAGIA PYTHONICA: Como los campos del Serializer se llaman IGUAL
+            # que los del DTO (barrio_id, direccion), podemos desempaquetar con **
+            crear_dto = CrearSocioDTO(**serializer.validated_data)
+            
+            socio_repo = DjangoSocioRepository()
+            auth_repo = DjangoAuthRepository()
+            
+            use_case = CrearSocioUseCase(socio_repo, auth_repo)
+            
             socio_creado_dto = use_case.execute(crear_dto)
             response_serializer = SocioSerializer(socio_creado_dto)
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
         except ValidacionError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": f"Error interno: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
     def update(self, request, pk=None):
         """ PUT /api/v1/socios/<pk>/ (Redirige a PATCH) """

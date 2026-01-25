@@ -75,9 +75,9 @@ class GenerarFacturaFijaUseCase:
                 reporte["creadas"] += 1
 
             except Exception as e:
-                # Identificación del error (Assuming servicio has socio.cedula attrib from select_related)
-                cedula = getattr(servicio.socio, 'cedula', 'Unknown')
-                msg_error = f"Servicio ID {servicio.id} (Socio: {cedula}): {str(e)}"
+                # Identificación del error
+                identificacion = getattr(servicio.socio, 'identificacion', 'Unknown')
+                msg_error = f"Servicio ID {servicio.id} (Socio: {identificacion}): {str(e)}"
                 reporte["errores"].append(msg_error)
 
         return reporte

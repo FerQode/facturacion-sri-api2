@@ -132,6 +132,11 @@ class IServicioRepository(ABC):
         """Retorna lista (o QuerySet) de servicios activos de tarifa fija"""
         pass
 
+    @abstractmethod
+    def create_automatico(self, terreno_id: int, socio_id: int, tipo: str, valor: float) -> Any:
+        """Crea un servicio automáticamente al registrar un terreno"""
+        pass
+
 class IMedidorRepository(ABC):
     @abstractmethod
     def get_by_id(self, medidor_id: int) -> Optional[Any]:

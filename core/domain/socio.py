@@ -49,7 +49,7 @@ class Socio:
         if self.identificacion and self.tipo_identificacion:
             try:
                 # Importación diferida para no ensuciar el namespace global si no se usa
-                from stdnum.ec import cedula as validador_cedula
+                from stdnum.ec import ci as validador_cedula # 'ci' = Cédula de Identidad
                 from stdnum.ec import ruc as validador_ruc
                 
                 tipo = str(self.tipo_identificacion).upper()

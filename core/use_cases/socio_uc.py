@@ -21,7 +21,8 @@ def _map_socio_to_dto(socio: Socio) -> SocioDTO:
 
     return SocioDTO(
         id=socio.id,
-        cedula=socio.cedula,
+        identificacion=socio.identificacion,
+        tipo_identificacion=socio.tipo_identificacion,
         nombres=socio.nombres,
         apellidos=socio.apellidos,
         email=socio.email,
@@ -67,12 +68,12 @@ class CrearSocioUseCase:
 
     def execute(self, input_dto: CrearSocioDTO) -> SocioDTO:
         # 1. Validar duplicados
-        if self.socio_repo.get_by_cedula(input_dto.cedula):
-            raise ValidacionError(f"La cédula {input_dto.cedula} ya está registrada.")
+        if self.socio_repo.get_by_identificacion(input_dto.identificacion):
+            raise ValidacionError(f"La identificación {input_dto.identificacion} ya está registrada.")
         
-        # 2. Configurar credenciales por defecto (Cédula/Cédula)
-        username = input_dto.username if input_dto.username else input_dto.cedula
-        password = input_dto.password if input_dto.password else input_dto.cedula
+        # 2. Configurar credenciales (Identificación/Identificación)
+        username = input_dto.username if input_dto.username else input_dto.identificacion
+        password = input_dto.password if input_dto.password else input_dto.identificacion
 
         try:
             # 3. Crear Usuario en Auth (Sistema de Login)
@@ -88,7 +89,8 @@ class CrearSocioUseCase:
         # 4. Crear Entidad Socio
         socio_entidad = Socio(
             id=None,
-            cedula=input_dto.cedula,
+            identificacion=input_dto.identificacion,
+            tipo_identificacion=input_dto.tipo_identificacion,
             nombres=input_dto.nombres,
             apellidos=input_dto.apellidos,
             

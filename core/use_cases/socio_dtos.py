@@ -10,7 +10,8 @@ from core.shared.enums import RolUsuario
 @dataclass(frozen=True)
 class SocioDTO:
     id: int
-    cedula: str
+    identificacion: str
+    tipo_identificacion: str
     nombres: str
     apellidos: str
     email: Optional[str]
@@ -33,7 +34,8 @@ class SocioDTO:
 # =============================================================================
 @dataclass(frozen=True)
 class CrearSocioDTO:
-    cedula: str
+    identificacion: str
+    tipo_identificacion: str
     nombres: str
     apellidos: str
     
