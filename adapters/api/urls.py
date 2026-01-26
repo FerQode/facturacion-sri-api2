@@ -14,7 +14,8 @@ from .views import (
     multa_views,
     servicio_agua_views, # ✅ AGREGADO: Importamos la vista del Servicio de Agua
     cobro_views,
-    sri_views # ✅ AGREGADO: Vista para sincronización SRI
+    sri_views, # ✅ AGREGADO: Vista para sincronización SRI
+    gobernanza_views # ✅ AGREGADO: Módulo de Gobernanza
 )
 
 # ==============================================================================
@@ -33,6 +34,9 @@ router.register(r'terrenos', terreno_views.TerrenoViewSet, basename='terreno')
 # ✅ NUEVO: Gestión de Servicios de Agua (Tarifa Fija)
 # Esto habilita: POST /api/v1/servicios-agua/
 router.register(r'servicios-agua', servicio_agua_views.ServicioAguaViewSet, basename='servicios-agua')
+
+# ✅ NUEVO: Gestión de Gobernanza (Eventos y Asistencia)
+router.register(r'eventos', gobernanza_views.EventoViewSet, basename='eventos')
 
 # 3. Gestión de Lecturas e Historial
 router.register(r'lecturas', lectura_views.LecturaViewSet, basename='lectura')

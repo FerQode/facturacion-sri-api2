@@ -82,6 +82,14 @@ class DjangoSocioRepository(ISocioRepository):
         qs = SocioModel.objects.select_related('usuario').all().order_by('apellidos')
         return [self._map_model_to_domain(m) for m in qs]
 
+    def list_active(self) -> List[Socio]:
+        qs = SocioModel.objects.select_related('usuario').filter(esta_activo=True).order_by('apellidos')
+        return [self._map_model_to_domain(m) for m in qs]
+
+    def list_by_barrio(self, barrio_id: int) -> List[Socio]:
+        qs = SocioModel.objects.select_related('usuario').filter(esta_activo=True, barrio_id=barrio_id).order_by('apellidos')
+        return [self._map_model_to_domain(m) for m in qs]
+
     # =================================================================
     # 3. IMPLEMENTACIÓN DE LA INTERFAZ (ESCRITURA)
     # =================================================================

@@ -42,3 +42,8 @@ class IEmailService(ABC):
     def enviar_notificacion_factura(self, email_destinatario: str, nombre_socio: str, numero_factura: int, xml_autorizado: str) -> bool:
         """Envía el correo con el XML adjunto"""
         pass
+
+    @abstractmethod
+    def enviar_notificacion_multa(self, email_destinatario: str, nombre_socio: str, evento_nombre: str, valor_multa: float) -> bool:
+        """Envía notificación de multa por inasistencia"""
+        pass

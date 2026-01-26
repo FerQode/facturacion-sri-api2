@@ -1,7 +1,9 @@
-# adapters/api/views/socio_views.py
+from django.db import transaction # <--- IMPORTANTE PARA INTEGRIDAD
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from rest_framework.permissions import IsAdminUser 
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.decorators import action # <--- Added Import
 from drf_yasg.utils import swagger_auto_schema # <--- IMPORTANTE PARA DOCUMENTACIÓN
 
 # Importamos los "traductores" de BBDD
@@ -21,11 +23,19 @@ from core.use_cases.socio_dtos import CrearSocioDTO, ActualizarSocioDTO
 # Importamos las excepciones de negocio
 from core.shared.exceptions import SocioNoEncontradoError, ValidacionError
 
+# --- IMPORTACIONES PARA ESTADO DE CUENTA 360 ---
+from adapters.api.serializers.estado_cuenta_serializers import EstadoCuentaSerializer
+from core.use_cases.socio.obtener_estado_cuenta_use_case import ObtenerEstadoCuentaUseCase
+from adapters.infrastructure.repositories.django_factura_repository import DjangoFacturaRepository
+from adapters.infrastructure.repositories.django_terreno_repository import DjangoTerrenoRepository
+from adapters.infrastructure.repositories.django_pago_repository import DjangoPagoRepository
+from adapters.infrastructure.repositories.django_servicio_repository import DjangoServicioRepository
+
 class SocioViewSet(viewsets.ViewSet):
     """
     ViewSet (Ventanilla) para la gestión CRUD de Socios.
     """
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(responses={200: SocioSerializer(many=True)})
     def list(self, request):
@@ -34,6 +44,16 @@ class SocioViewSet(viewsets.ViewSet):
             repo = DjangoSocioRepository()
             use_case = ListarSociosUseCase(repo)
             socios_dto = use_case.execute()
+            
+            # Paginación manual para ViewSet custom
+            paginator = PageNumberPagination()
+            paginator.page_size = 20 # Configuración por defecto
+            result_page = paginator.paginate_queryset(socios_dto, request, view=self)
+            
+            if result_page is not None:
+                serializer = SocioSerializer(result_page, many=True)
+                return paginator.get_paginated_response(serializer.data)
+
             serializer = SocioSerializer(socios_dto, many=True)
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Exception as e:
@@ -52,6 +72,7 @@ class SocioViewSet(viewsets.ViewSet):
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
 
     @swagger_auto_schema(request_body=CrearSocioSerializer, responses={201: SocioSerializer()})
+    @transaction.atomic
     def create(self, request):
         """ POST /api/v1/socios/ """
         try:
@@ -113,3 +134,45 @@ class SocioViewSet(viewsets.ViewSet):
             return Response(status=status.HTTP_204_NO_CONTENT)
         except SocioNoEncontradoError as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=True, methods=['get'], url_path='estado-cuenta')
+    @swagger_auto_schema(responses={200: EstadoCuentaSerializer()})
+    def estado_cuenta(self, request, pk=None):
+        """
+        Retorna el Estado de Cuenta 360° (Propiedades, Deudas, Multas, Historial).
+        """
+        # --- SEGURIDAD: CONTROL DE ACCESO (DATA LEAKAGE PREVENTION) ---
+        if not request.user.is_staff:
+            # Si no es admin/staff, debe ser el dueño de la cuenta
+            # Asumimos que request.user tiene perfil_socio (OneToOne)
+            if not hasattr(request.user, 'perfil_socio'):
+                return Response({"error": "Usuario no vinculado a un socio"}, status=status.HTTP_403_FORBIDDEN)
+            
+            if request.user.perfil_socio.id != int(pk):
+                return Response({"error": "No tiene permiso para ver esta cuenta"}, status=status.HTTP_403_FORBIDDEN)
+        
+        try:
+            # 1. Inicializar Repositorios
+            socio_repo = DjangoSocioRepository()
+            terreno_repo = DjangoTerrenoRepository()
+            factura_repo = DjangoFacturaRepository()
+            pago_repo = DjangoPagoRepository()
+            servicio_repo = DjangoServicioRepository()
+
+            # 2. Inicializar UseCase
+            use_case = ObtenerEstadoCuentaUseCase(
+                socio_repo, terreno_repo, factura_repo, pago_repo, servicio_repo
+            )
+
+            # 3. Ejecutar Lógica de Negocio
+            estado_cuenta_dto = use_case.execute(int(pk))
+
+            # 4. Serializar Respuesta
+            serializer = EstadoCuentaSerializer(estado_cuenta_dto)
+            
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"error": f"Error generando estado de cuenta: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

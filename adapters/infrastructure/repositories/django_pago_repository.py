@@ -73,3 +73,32 @@ class DjangoPagoRepository(IPagoRepository):
 
         if pagos_a_crear:
             PagoModel.objects.bulk_create(pagos_a_crear)
+
+    def obtener_ultimos_pagos(self, socio_id: int, limite: int = 5) -> List[dict]:
+        """
+        Retorna los últimos pagos realizados por el socio.
+        Incluye el link al PDF de la factura pagada si existe.
+        """
+        # Obtenemos los pagos a través de la relación con Factura -> Socio
+        pagos = PagoModel.objects.filter(
+            factura__socio_id=socio_id,
+            validado=True
+        ).select_related('factura').order_by('-fecha_registro')[:limite]
+
+        resultado = []
+        for p in pagos:
+            # Construimos la URL del PDF si existe en la factura
+            pdf_url = None
+            if p.factura.archivo_pdf:
+                pdf_url = p.factura.archivo_pdf.url
+            
+            # Formato simple para cumplir contrato
+            item = {
+                "fecha": p.fecha_registro.date(),
+                "monto": p.monto,
+                "recibo_nro": f"PAG-{p.id}", # Generamos un ID de recibo virtual
+                "archivo_pdf": pdf_url
+            }
+            resultado.append(item)
+            
+        return resultado
