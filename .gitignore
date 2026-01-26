@@ -1,29 +1,40 @@
 # Entorno virtual
 venv/
 .venv/
+env/
 
 # Archivos de Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.Python
+*.egg-info/
 
-# Bases de datos
+# Bases de datos y Media
 *.sqlite3
 db.sqlite3
+media/
+staticfiles/
 
-# Archivos de configuración local (¡importante!)
-.env
-db.sqlite3
+# Logs
 *.log
+
+# Archivos de configuración local (¡SEGURIDAD CRÍTICA!)
+.env
 config/local_settings.py
-# Ignorar la carpeta con la firma electrónica
+
+# Firma Electrónica (¡SEGURIDAD CRÍTICA!)
 /secrets/
+*.p12
+*.jks
 
 # Archivos de IDE
 .idea/
 .vscode/
+*.swp
 
-# Archivos del sistema operativo
+# Archivos del sistema operativo y Temporales
 .DS_Store
 Thumbs.db
+tmp/
