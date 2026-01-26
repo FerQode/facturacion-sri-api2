@@ -269,3 +269,59 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # SRI Offset
 SRI_SECUENCIA_INICIO = 520
+
+# ==============================================================================
+# 13. CONFIGURACIÓN DE LOGGING (La Caja Negra del Avión)
+# ==============================================================================
+# Esto nos permitirá ver en la consola:
+# 1. Las consultas SQL reales (para ver si Django trae los socios correctos).
+# 2. Tus prints y logs personalizados de la Arquitectura Limpia.
+# 3. Errores detallados cuando falle el envío de correo.
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        # Logger para ver QUÉ está pasando en tu código (Adapters y Core)
+        'adapters': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        'core': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        # Logger para ver el SQL (¡Vital para depurar la Minga!)
+        # Si sale mucha basura, cambia 'DEBUG' a 'INFO' o 'WARNING'
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'INFO',  # Ponlo en 'DEBUG' si quieres ver el SQL exacto
+            'propagate': False,
+        },
+        # Logger general de Django
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+    },
+}

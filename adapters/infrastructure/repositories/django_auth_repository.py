@@ -21,10 +21,15 @@ class DjangoAuthRepository(IAuthRepository):
         user = User.objects.create_user(username=username, password=password, email=email)
         
         # 3. Lógica de permisos basada en Rol (RBAC simple)
-        # Solo damos acceso al panel de administración (is_staff) a roles específicos
         if rol in [RolUsuario.ADMINISTRADOR, RolUsuario.TESORERO]:
             user.is_staff = True
             user.save()
+        else:
+            # Por defecto, si no es admin, asumimos que es SOCIO y lo agregamos al grupo.
+            # Esto cumple el requerimiento: Grupo = "SOCIOS"
+            from django.contrib.auth.models import Group
+            group, _ = Group.objects.get_or_create(name='SOCIOS')
+            user.groups.add(group)
             
         return user.id
 

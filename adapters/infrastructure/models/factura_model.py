@@ -64,6 +64,10 @@ class FacturaModel(models.Model):
     xml_autorizado_sri = models.TextField(null=True, blank=True)
     mensaje_error_sri = models.TextField(null=True, blank=True)
 
+    # --- ARCHIVOS SRI (Requerimiento Normativo) ---
+    archivo_xml = models.FileField(upload_to='comprobantes/xml/%Y/%m/', null=True, blank=True, help_text="Archivo XML autorizado por el SRI")
+    archivo_pdf = models.FileField(upload_to='comprobantes/pdf/%Y/%m/', null=True, blank=True, help_text="RIDE (PDF) generado")
+
     class Meta:
         db_table = 'facturas'
         verbose_name = 'Factura'

@@ -19,3 +19,8 @@ class DjangoServicioRepository(IServicioRepository):
             valor_tarifa=valor,
             activo=True
         )
+
+    def get_by_socio(self, socio_id: int) -> List[Any]:
+        qs = ServicioModel.objects.filter(socio_id=socio_id)
+        # Return simpler dicts/objects for DTO mapping
+        return list(qs.values('id', 'terreno_id', 'tipo'))

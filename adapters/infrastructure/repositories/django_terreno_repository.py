@@ -76,6 +76,10 @@ class DjangoTerrenoRepository(ITerrenoRepository):
         qs = TerrenoModel.objects.select_related('barrio').filter(barrio_id=barrio_id)
         return [self._map_model_to_domain(model) for model in qs]
 
+    def get_by_socio(self, socio_id: int) -> List[Terreno]:
+        qs = TerrenoModel.objects.select_related('barrio').filter(socio_id=socio_id)
+        return [self._map_model_to_domain(model) for model in qs]
+
     # --- MÉTODOS AUXILIARES DE MAPEO ---
 
     def _map_model_to_domain(self, model: TerrenoModel) -> Terreno:

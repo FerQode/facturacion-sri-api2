@@ -131,9 +131,19 @@ class DjangoFacturaRepository(IFacturaRepository):
             sri_clave_acceso=f_db.clave_acceso_sri,
             sri_xml_autorizado=f_db.xml_autorizado_sri,
             sri_mensaje_error=f_db.mensaje_error_sri,
-            estado_sri=f_db.estado_sri
-            # Fecha autorización se podría agregar si estuviera en el dataclass
+            estado_sri=f_db.estado_sri,
+            # Mapeo de archivos
+            archivo_pdf=f_db.archivo_pdf.url if f_db.archivo_pdf else None,
+            archivo_xml_path=f_db.archivo_xml.url if f_db.archivo_xml else None
         )
+
+    def obtener_pendientes_por_socio(self, socio_id: int) -> list[FacturaEntity]:
+        f_dbs = FacturaModel.objects.filter(
+            socio_id=socio_id,
+            estado=EstadoFactura.PENDIENTE.value
+        ).select_related('socio', 'medidor', 'servicio').prefetch_related('detalles')
+        
+        return [self._mapear_a_dominio(f) for f in f_dbs]
 
     def _mapear_socio(self, socio_db) -> SocioEntity:
         # Mapper auxiliar para el socio

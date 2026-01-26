@@ -58,6 +58,10 @@ class Factura:
     sri_xml_autorizado: Optional[str] = None
     sri_mensaje_error: Optional[str] = None
     estado_sri: Optional[str] = None
+    
+    # Archivos adjuntos (Rutas/URLs)
+    archivo_pdf: Optional[str] = None
+    archivo_xml_path: Optional[str] = None
 
     # --- LÓGICA DE NEGOCIO (CORREGIDA) ---
 

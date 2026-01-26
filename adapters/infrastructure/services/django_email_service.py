@@ -2,10 +2,11 @@
 from django.core.mail import EmailMultiAlternatives
 from django.conf import settings
 import logging
+from core.interfaces.services import IEmailService
 
 logger = logging.getLogger(__name__)
 
-class DjangoEmailService:
+class DjangoEmailService(IEmailService):
     """
     Servicio de Infraestructura para el envío de correos electrónicos.
     Se encarga de adjuntar el XML autorizado.
@@ -58,4 +59,36 @@ class DjangoEmailService:
         except Exception as e:
             logger.error(f"❌ Error enviando correo a {email_destinatario}: {str(e)}")
             # Retornamos False pero NO lanzamos error para no tumbar el cobro
+            return False
+
+    def enviar_notificacion_multa(self, email_destinatario, nombre_socio, evento_nombre, valor_multa):
+        if not email_destinatario or '@' not in email_destinatario:
+            logger.warning(f"📭 El socio {nombre_socio} no tiene correo válido. No se envía notificación de multa.")
+            return False
+            
+        try:
+            asunto = f"Notificación de Multa - {evento_nombre}"
+            mensaje_html = f"""
+            <html>
+            <body>
+                <h2 style="color: #c0392b;">Estimado(a) {nombre_socio},</h2>
+                <p>La <strong>Junta de Agua Potable</strong> le informa que se ha generado una multa por inasistencia al evento: <strong>{evento_nombre}</strong>.</p>
+                <p>Valor de la multa: <strong>${valor_multa:.2f}</strong></p>
+                <p>Por favor, acérquese a cancelar o presente su justificación lo antes posible.</p>
+            </body>
+            </html>
+            """
+            
+            email = EmailMultiAlternatives(
+                subject=asunto,
+                body=f"Multa generada por inasistencia a {evento_nombre}. Valor: ${valor_multa}",
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[email_destinatario]
+            )
+            email.attach_alternative(mensaje_html, "text/html")
+            email.send()
+            logger.info(f"📧 Notificación de multa enviada a {email_destinatario}")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Error enviando notificación de multa a {email_destinatario}: {str(e)}")
             return False
