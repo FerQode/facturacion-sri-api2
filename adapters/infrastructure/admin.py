@@ -14,7 +14,8 @@ from .models import (
     DetalleFacturaModel,
     MultaModel,  # ✅ NUEVO
     PagoModel,   # ✅ NUEVO
-    ServicioAguaModel # ✅ NUEVO
+    PagoModel,   # ✅ NUEVO
+    ServicioModel # ✅ CORREGIDO
 )
 
 @admin.register(BarrioModel)
@@ -127,9 +128,10 @@ class PagoAdmin(admin.ModelAdmin):
     list_filter = ('metodo',)
 
 # --- ✅ SECCIÓN DE SERVICIOS AGUA (NUEVO) ---
-@admin.register(ServicioAguaModel)
+@admin.register(ServicioModel)
 class ServicioAguaAdmin(admin.ModelAdmin):
     list_display = ('id', 'get_socio_nombre', 'tipo', 'valor_tarifa', 'activo', 'fecha_instalacion')
+
     list_filter = ('tipo', 'activo', 'fecha_instalacion')
     search_fields = ('socio__nombres', 'socio__apellidos', 'socio__identificacion')
     autocomplete_fields = ['socio', 'terreno']

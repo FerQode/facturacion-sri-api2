@@ -181,6 +181,11 @@ class IServicioRepository(ABC):
         """Retorna los servicios asociados al socio para mapeo"""
         pass
 
+    @abstractmethod
+    def get_active_by_terreno_and_type(self, terreno_id: int, tipo: str) -> Optional[Any]:
+        """Obtiene el servicio activo para un terreno y tipo específico"""
+        pass
+
 class IMedidorRepository(ABC):
     @abstractmethod
     def get_by_id(self, medidor_id: int) -> Optional[Any]:

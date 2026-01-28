@@ -23,7 +23,9 @@ from core.interfaces.repositories import (
     ILecturaRepository,
     IMedidorRepository,
     ISocioRepository,
-    ITerrenoRepository
+    ISocioRepository,
+    ITerrenoRepository,
+    IServicioRepository # ✅ Nuevo Dependency
 )
 
 # DTOs
@@ -41,12 +43,14 @@ class GenerarFacturaDesdeLecturaUseCase:
         medidor_repo: IMedidorRepository,
         terreno_repo: ITerrenoRepository,
         socio_repo: ISocioRepository,
+        servicio_repo: IServicioRepository, # ✅ Inject Repo
     ):
         self.factura_repo = factura_repo
         self.lectura_repo = lectura_repo
         self.medidor_repo = medidor_repo
         self.terreno_repo = terreno_repo
         self.socio_repo = socio_repo
+        self.servicio_repo = servicio_repo
 
 
     @transaction.atomic
@@ -91,8 +95,33 @@ class GenerarFacturaDesdeLecturaUseCase:
         )
 
         # 4. CÁLCULOS
+        # 4. CÁLCULOS
+        # 4.1 Obtener Contrato de Servicio (Tarifas Dinámicas)
+        servicio = self.servicio_repo.get_active_by_terreno_and_type(terreno.id, 'MEDIDO')
+        
+        # Defaults de Respaldo (Hardcoded values if service not found, though should exist)
+        tarifa_base_m3 = 15
+        tarifa_base_precio = Decimal("3.00")
+        tarifa_excedente_precio = Decimal("0.25")
+        
+        if servicio:
+            # Factura Enlazada al Servicio (Para reportes)
+            factura.servicio_id = servicio.id
+            
+            # Usar valores de la DB
+            tarifa_base_m3 = servicio.tarifa_basica_m3
+            tarifa_base_precio = servicio.valor_tarifa 
+            tarifa_excedente_precio = servicio.tarifa_excedente_precio
+
         consumo_entero = int(float(lectura.consumo_del_mes_m3))
-        factura.calcular_total_con_medidor(consumo_entero)
+        
+        # 4.2 Calcular usando parámetros
+        factura.calcular_total_con_medidor(
+            consumo_m3=consumo_entero,
+            tarifa_base_m3=tarifa_base_m3,
+            tarifa_base_precio=tarifa_base_precio,
+            tarifa_excedente_precio=tarifa_excedente_precio
+        )
 
         # 5. GUARDAR
         factura = self.factura_repo.save(factura)

@@ -19,7 +19,12 @@ class ServicioModel(models.Model):
 
     tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='FIJO')
     valor_tarifa = models.DecimalField(max_digits=10, decimal_places=2, default=3.00,
-                                       help_text="Valor mensual para tarifa fija")
+                                       help_text="Costo de la Tarifa Básica (o Fija)")
+
+    # Campos para Tarifa Medida (Configurables)
+    tarifa_basica_m3 = models.PositiveIntegerField(default=15, help_text="Metros cúbicos incluidos en la base (Ej: 15)")
+    tarifa_excedente_precio = models.DecimalField(max_digits=10, decimal_places=2, default=0.25, 
+                                          help_text="Costo por cada m³ adicional (Ej: 0.25)")
 
     fecha_instalacion = models.DateField(auto_now_add=True)
     activo = models.BooleanField(default=True)

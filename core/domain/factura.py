@@ -65,44 +65,50 @@ class Factura:
 
     # --- LÓGICA DE NEGOCIO (CORREGIDA) ---
 
-    def calcular_total_con_medidor(self, consumo_m3: int):
+    def calcular_total_con_medidor(self, 
+            consumo_m3: int, 
+            # Parámetros dinámicos desde el Servicio/Contrato
+            tarifa_base_m3: int = 15,
+            tarifa_base_precio: Decimal = Decimal("3.00"),
+            tarifa_excedente_precio: Decimal = Decimal("0.25")
+        ):
         self.detalles.clear()
 
-        if consumo_m3 <= TARIFA_BASE_M3:
-            # CASO A: Consumo dentro de la base (Tarifa Plana)
-            # Se cobra 1 unidad de servicio, independientemente del volumen exacto
+        # CASO A: Consumo dentro de la base
+        if consumo_m3 <= tarifa_base_m3:
             self.detalles.append(DetalleFactura(
                 id=None,
-                concepto=f"Servicio de Agua Potable (Base hasta {TARIFA_BASE_M3} m³)",
+                concepto=f"Servicio de Agua Potable (Base hasta {tarifa_base_m3} m³)",
                 cantidad=Decimal(1),
-                precio_unitario=TARIFA_BASE_PRECIO,
-                subtotal=TARIFA_BASE_PRECIO
+                precio_unitario=tarifa_base_precio,
+                subtotal=tarifa_base_precio
             ))
-            self.subtotal = TARIFA_BASE_PRECIO
+            self.subtotal = tarifa_base_precio
+        
+        # CASO B: Consumo Excedente
         else:
-            # CASO B: Consumo Excedente
-            consumo_excedente = consumo_m3 - TARIFA_BASE_M3
+            consumo_excedente = consumo_m3 - tarifa_base_m3
 
-            # 1. Cobro la base completa como 1 unidad
+            # 1. Base
             self.detalles.append(DetalleFactura(
                 id=None,
-                concepto=f"Servicio Base ({TARIFA_BASE_M3} m³)",
+                concepto=f"Servicio Base ({tarifa_base_m3} m³)",
                 cantidad=Decimal(1),
-                precio_unitario=TARIFA_BASE_PRECIO,
-                subtotal=TARIFA_BASE_PRECIO
+                precio_unitario=tarifa_base_precio,
+                subtotal=tarifa_base_precio
             ))
 
-            # 2. Cobro el excedente por metro cúbico
-            subtotal_excedente = Decimal(consumo_excedente) * TARIFA_EXCEDENTE_PRECIO
+            # 2. Excedente
+            subtotal_excedente = Decimal(consumo_excedente) * tarifa_excedente_precio
             self.detalles.append(DetalleFactura(
                 id=None,
-                concepto=f"Consumo Excedente ({consumo_excedente} m³)",
+                concepto=f"Consumo Excedente ({consumo_excedente} m³ a ${tarifa_excedente_precio}/m³)",
                 cantidad=Decimal(consumo_excedente),
-                precio_unitario=TARIFA_EXCEDENTE_PRECIO,
+                precio_unitario=tarifa_excedente_precio,
                 subtotal=subtotal_excedente
             ))
 
-            self.subtotal = TARIFA_BASE_PRECIO + subtotal_excedente
+            self.subtotal = tarifa_base_precio + subtotal_excedente
 
         self.total = self.subtotal + self.impuestos
 
