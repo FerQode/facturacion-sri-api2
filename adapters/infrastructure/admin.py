@@ -14,8 +14,10 @@ from .models import (
     DetalleFacturaModel,
     MultaModel,  # ✅ NUEVO
     PagoModel,   # ✅ NUEVO
-    PagoModel,   # ✅ NUEVO
-    ServicioModel # ✅ CORREGIDO
+    PagoModel,
+    ServicioModel,
+    EventoModel,      # ✅ Faltaba importar esto
+    AsistenciaModel   # ✅ Faltaba importar esto
 )
 
 @admin.register(BarrioModel)
@@ -139,3 +141,53 @@ class ServicioAguaAdmin(admin.ModelAdmin):
     def get_socio_nombre(self, obj):
         return f"{obj.socio.nombres} {obj.socio.apellidos}"
     get_socio_nombre.short_description = "Socio"
+
+# --- ✅ FASE 2: GESTIÓN DE EVENTOS Y MINGAS ---
+
+@admin.action(description="👥 Generar lista de asistencia (Todos los socios)")
+def generar_asistencia_masiva(modeladmin, request, queryset):
+    """
+    Crea registros de Asistencia para TODOS los socios activos en el evento seleccionado.
+    """
+    for evento in queryset:
+        socios_activos = SocioModel.objects.filter(esta_activo=True)
+        creados = 0
+        for socio in socios_activos:
+            # get_or_create evita duplicados si ya existen
+            obj, created = AsistenciaModel.objects.get_or_create(
+                evento=evento,
+                socio=socio,
+                defaults={'asistio': False}
+            )
+            if created:
+                creados += 1
+        modeladmin.message_user(request, f"✅ Se generaron {creados} boletas de asistencia para: {evento.nombre}")
+
+@admin.action(description="✅ Marcar como ASISTIÓ")
+def marcar_asistio(modeladmin, request, queryset):
+    updated = queryset.update(asistio=True)
+    modeladmin.message_user(request, f"{updated} socios marcados como presentes.")
+
+@admin.register(EventoModel)
+class EventoAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'tipo', 'fecha', 'valor_multa', 'estado')
+    list_filter = ('tipo', 'estado', 'fecha')
+    search_fields = ('nombre',)
+    actions = [generar_asistencia_masiva]
+
+@admin.register(AsistenciaModel)
+class AsistenciaAdmin(admin.ModelAdmin):
+    list_display = ('get_evento', 'get_socio', 'asistio', 'estado_justificacion')
+    list_filter = ('evento', 'asistio', 'estado_justificacion')
+    search_fields = ('socio__nombres', 'socio__apellidos', 'evento__nombre')
+    list_editable = ('asistio',) # ¡Permite marcar rápido desde la lista!
+    actions = [marcar_asistio]
+    autocomplete_fields = ['socio', 'evento']
+
+    def get_evento(self, obj):
+        return f"{obj.evento.nombre} ({obj.evento.fecha})"
+    get_evento.short_description = "Evento"
+
+    def get_socio(self, obj):
+        return f"{obj.socio.apellidos} {obj.socio.nombres}"
+    get_socio.short_description = "Socio"
