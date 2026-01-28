@@ -1,3 +1,4 @@
+# core/domain/evento.py
 from dataclasses import dataclass
 from datetime import datetime, date
 from typing import Optional
@@ -9,6 +10,7 @@ class TipoEvento(str, Enum):
     APORTE = "APORTE"
 
 class EstadoEvento(str, Enum):
+    PROGRAMADA = "PROGRAMADA"
     BORRADOR = "BORRADOR"
     FINALIZADO = "FINALIZADO"
 
@@ -19,7 +21,7 @@ class Evento:
     tipo: TipoEvento
     fecha: date
     valor_multa: float
-    estado: EstadoEvento = EstadoEvento.BORRADOR
+    estado: EstadoEvento = EstadoEvento.PROGRAMADA
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

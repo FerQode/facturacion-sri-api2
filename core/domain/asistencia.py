@@ -1,3 +1,4 @@
+# core/domain/asistencia.py
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -9,12 +10,18 @@ class EstadoJustificacion(str, Enum):
     APROBADA = "APROBADA"
     RECHAZADA = "RECHAZADA"
 
+class EstadoAsistencia(str, Enum):
+    PENDIENTE = "PENDIENTE"
+    PRESENTE = "PRESENTE"
+    FALTA = "FALTA"
+    JUSTIFICADO = "JUSTIFICADO"
+
 @dataclass
 class Asistencia:
     id: Optional[int]
     evento_id: int
     socio_id: int
-    asistio: bool = False
+    estado: EstadoAsistencia = EstadoAsistencia.PENDIENTE
     estado_justificacion: EstadoJustificacion = EstadoJustificacion.SIN_SOLICITUD
     multa_factura_id: Optional[int] = None
     observacion: Optional[str] = None
@@ -22,7 +29,7 @@ class Asistencia:
     updated_at: Optional[datetime] = None
 
     def marcar_asistencia(self):
-        self.asistio = True
+        self.estado = EstadoAsistencia.PRESENTE
         
     def solicitar_justificacion(self, motivo: str):
         self.estado_justificacion = EstadoJustificacion.PENDIENTE

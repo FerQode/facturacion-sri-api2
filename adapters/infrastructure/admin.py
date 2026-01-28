@@ -1,6 +1,6 @@
 # adapters/infrastructure/admin.py
-
 from django.contrib import admin
+from core.domain.asistencia import EstadoAsistencia, EstadoJustificacion
 
 # 1. Importamos los modelos
 # (Asegúrate de que TODOS existan en models/__init__.py, tal como lo actualizamos antes)
@@ -148,6 +148,7 @@ class ServicioAguaAdmin(admin.ModelAdmin):
 def generar_asistencia_masiva(modeladmin, request, queryset):
     """
     Crea registros de Asistencia para TODOS los socios activos en el evento seleccionado.
+    Default: Estado PENDIENTE.
     """
     for evento in queryset:
         socios_activos = SocioModel.objects.filter(esta_activo=True)
@@ -157,16 +158,21 @@ def generar_asistencia_masiva(modeladmin, request, queryset):
             obj, created = AsistenciaModel.objects.get_or_create(
                 evento=evento,
                 socio=socio,
-                defaults={'asistio': False}
+                defaults={'estado': EstadoAsistencia.PENDIENTE.value}
             )
             if created:
                 creados += 1
         modeladmin.message_user(request, f"✅ Se generaron {creados} boletas de asistencia para: {evento.nombre}")
 
-@admin.action(description="✅ Marcar como ASISTIÓ")
-def marcar_asistio(modeladmin, request, queryset):
-    updated = queryset.update(asistio=True)
-    modeladmin.message_user(request, f"{updated} socios marcados como presentes.")
+@admin.action(description="✅ Marcar como PRESENTE")
+def marcar_presente(modeladmin, request, queryset):
+    updated = queryset.update(estado=EstadoAsistencia.PRESENTE.value)
+    modeladmin.message_user(request, f"{updated} socios marcados como PRESENTES.")
+
+@admin.action(description="❌ Marcar como FALTA (Injustificada)")
+def marcar_falta(modeladmin, request, queryset):
+    updated = queryset.update(estado=EstadoAsistencia.FALTA.value)
+    modeladmin.message_user(request, f"{updated} socios marcados con FALTA.")
 
 @admin.register(EventoModel)
 class EventoAdmin(admin.ModelAdmin):
@@ -177,11 +183,11 @@ class EventoAdmin(admin.ModelAdmin):
 
 @admin.register(AsistenciaModel)
 class AsistenciaAdmin(admin.ModelAdmin):
-    list_display = ('get_evento', 'get_socio', 'asistio', 'estado_justificacion')
-    list_filter = ('evento', 'asistio', 'estado_justificacion')
+    list_display = ('get_evento', 'get_socio', 'estado', 'estado_justificacion')
+    list_filter = ('evento', 'estado', 'estado_justificacion')
     search_fields = ('socio__nombres', 'socio__apellidos', 'evento__nombre')
-    list_editable = ('asistio',) # ¡Permite marcar rápido desde la lista!
-    actions = [marcar_asistio]
+    list_editable = ('estado',) # ¡Permite marcar rápido desde la lista!
+    actions = [marcar_presente, marcar_falta]
     autocomplete_fields = ['socio', 'evento']
 
     def get_evento(self, obj):
