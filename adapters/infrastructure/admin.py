@@ -13,7 +13,8 @@ from .models import (
     FacturaModel,        
     DetalleFacturaModel,
     MultaModel,  # ✅ NUEVO
-    PagoModel    # ✅ NUEVO
+    PagoModel,   # ✅ NUEVO
+    ServicioAguaModel # ✅ NUEVO
 )
 
 @admin.register(BarrioModel)
@@ -124,3 +125,15 @@ class FacturaAdmin(admin.ModelAdmin):
 class PagoAdmin(admin.ModelAdmin):
     list_display = ('id', 'factura', 'metodo', 'monto', 'referencia', 'fecha_registro')
     list_filter = ('metodo',)
+
+# --- ✅ SECCIÓN DE SERVICIOS AGUA (NUEVO) ---
+@admin.register(ServicioAguaModel)
+class ServicioAguaAdmin(admin.ModelAdmin):
+    list_display = ('id', 'get_socio_nombre', 'tipo', 'valor_tarifa', 'activo', 'fecha_instalacion')
+    list_filter = ('tipo', 'activo', 'fecha_instalacion')
+    search_fields = ('socio__nombres', 'socio__apellidos', 'socio__identificacion')
+    autocomplete_fields = ['socio', 'terreno']
+
+    def get_socio_nombre(self, obj):
+        return f"{obj.socio.nombres} {obj.socio.apellidos}"
+    get_socio_nombre.short_description = "Socio"
