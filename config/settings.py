@@ -1,3 +1,4 @@
+# config/settings.py
 """
 Django settings for config project.
 
@@ -77,6 +78,9 @@ MIDDLEWARE = [
     # antes de CommonMiddleware
     'corsheaders.middleware.CorsMiddleware',
 
+    # WhiteNoise: Antes de CommonMiddleware pero después de Security
+    'whitenoise.middleware.WhiteNoiseMiddleware',
+
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -114,7 +118,7 @@ DATABASES = {
     'default': dj_database_url.config(
         default=os.getenv('DATABASE_URL'),
         conn_max_age=600,
-        ssl_require=False # Cambiar a True si usas DB en la nube (AWS/Azure)
+        ssl_require=not DEBUG # True en Producción (DEBUG=False), False en Local (DEBUG=True)
     )
 }
 
@@ -150,7 +154,19 @@ USE_TZ = True # ¡Esto es lo importante! Activa el soporte de zonas horarias
 # ==============================================================================
 
 STATIC_URL = 'static/'
-# STATIC_ROOT = BASE_DIR / 'staticfiles' # Descomentar para producción
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Compresión y caché para producción con WhiteNoise
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# ==============================================================================
+# 9. SEGURIDAD ADICIONAL (CSRF & TRUSTED ORIGINS)
+# ==============================================================================
+# Leemos los orígenes confiables desde el entorno (separados por comas)
+# Ejemplo: https://facturacion-sri-api.up.railway.app,https://mi-dominio.com
+CSRF_TRUSTED_URLS = os.getenv('CSRF_TRUSTED_URLS', '')
+if CSRF_TRUSTED_URLS:
+    CSRF_TRUSTED_ORIGINS = [url.strip() for url in CSRF_TRUSTED_URLS.split(',')]
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -200,6 +216,9 @@ try:
     # Definimos dónde Django debe buscar el archivo .p12 y el .jar
     # Se recomienda crear una carpeta 'secrets' en la raíz para el .p12
     SRI_FIRMA_PATH = BASE_DIR / 'secrets' / 'el_arbolito.p12'
+    
+    # RAILWAY: Leemos la firma en Base64 si existe
+    SRI_FIRMA_BASE64 = os.getenv('SRI_FIRMA_BASE64')
 
     # Ruta al JAR que firma (Extraída del proyecto A)
     SRI_JAR_PATH = BASE_DIR / 'adapters' / 'infrastructure' / 'files' / 'jar' / 'sri.jar'
@@ -232,9 +251,11 @@ try:
     # Verificamos existencia física de archivos (Solo si estamos corriendo servidor)
     # Usamos os.environ.get('RUN_MAIN') para que no falle al hacer migraciones simples
     if os.getenv('RUN_MAIN') == 'true':
-        if not SRI_FIRMA_PATH.exists():
-            print(f"❌ ERROR CRÍTICO SRI: No se encuentra el archivo de firma en: {SRI_FIRMA_PATH}")
-            print("   -> Por favor coloca tu archivo .p12 en la carpeta 'secrets/' de la raíz.")
+        # Si NO hay firma en Base64 Y NO existe el archivo local firmar error
+        if not SRI_FIRMA_BASE64 and not SRI_FIRMA_PATH.exists():
+            print(f"❌ ERROR CRÍTICO SRI: No se encuentra firma (Ni Base64 ni Archivo local)")
+            print(f"   -> Ruta buscada: {SRI_FIRMA_PATH}")
+            print("   -> Por favor coloca tu archivo .p12 en la carpeta 'secrets/' o configura SRI_FIRMA_BASE64.")
 
         if not SRI_JAR_PATH.exists():
             print(f"❌ ERROR CRÍTICO SRI: No se encuentra el archivo sri.jar en: {SRI_JAR_PATH}")
@@ -271,7 +292,20 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 SRI_SECUENCIA_INICIO = 520
 
 # ==============================================================================
-# 13. CONFIGURACIÓN DE LOGGING (La Caja Negra del Avión)
+# 13. CONFIGURACIÓN DE CELERY & REDIS
+# ==============================================================================
+# Railway inyecta REDIS_URL automáticamente si agregas el servicio Redis.
+# Si no hay Redis configurado, Celery fallará al arrancar el worker.
+
+CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+
+# ==============================================================================
+# 14. CONFIGURACIÓN DE LOGGING (La Caja Negra del Avión)
 # ==============================================================================
 # Esto nos permitirá ver en la consola:
 # 1. Las consultas SQL reales (para ver si Django trae los socios correctos).

@@ -1,3 +1,4 @@
+# adapters/api/views/socio_views.py
 from django.db import transaction # <--- IMPORTANTE PARA INTEGRIDAD
 from rest_framework import viewsets, status
 from rest_framework.response import Response

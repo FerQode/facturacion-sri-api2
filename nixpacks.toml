@@ -1,0 +1,25 @@
+# nixpacks.toml
+# Configuración Híbrida Python + Java para Facturación SRI
+
+providers = ["python"]
+
+[phases.setup]
+nixPkgs = [
+    "jdk17_headless",      # Para firmar con sri.jar
+    "mariadb-connector-c", # Para mysqlclient
+    "libxml2",             # Para lxml
+    "libxslt",             # Para lxml
+    "zlib",
+    "tzdata"               # CRÍTICO: Para configurar la hora de Ecuador
+]
+
+[phases.build]
+# Comandos que se ejecutan al construir la imagen
+cmds = [
+    "python manage.py collectstatic --noinput"
+]
+
+[variables]
+PIP_PREFER_BINARY = "true"
+# Forzamos la hora de Ecuador desde la construcción
+TZ = "America/Guayaquil"
