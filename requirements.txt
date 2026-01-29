@@ -6,6 +6,7 @@ django-cors-headers
 # Authentication & Documentation
 djangorestframework-simplejwt
 drf-yasg
+django-simple-history
 
 # Utilities & Environment
 python-dotenv
@@ -27,3 +28,4 @@ psycopg2-binary
 # Asynchronous Tasks (Celery + Redis)
 celery
 redis
+flake8

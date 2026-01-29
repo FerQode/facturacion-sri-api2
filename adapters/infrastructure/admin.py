@@ -1,23 +1,23 @@
 # adapters/infrastructure/admin.py
 from django.contrib import admin
 from core.domain.asistencia import EstadoAsistencia, EstadoJustificacion
+from simple_history.admin import SimpleHistoryAdmin
 
 # 1. Importamos los modelos
 # (Asegúrate de que TODOS existan en models/__init__.py, tal como lo actualizamos antes)
 from .models import (
-    SocioModel, 
-    MedidorModel, 
-    LecturaModel, 
-    BarrioModel, 
+    SocioModel,
+    MedidorModel,
+    LecturaModel,
+    BarrioModel,
     TerrenoModel,
-    FacturaModel,        
+    FacturaModel,
     DetalleFacturaModel,
-    MultaModel,  # ✅ NUEVO
-    PagoModel,   # ✅ NUEVO
+    MultaModel,
     PagoModel,
     ServicioModel,
-    EventoModel,      # ✅ Faltaba importar esto
-    AsistenciaModel   # ✅ Faltaba importar esto
+    EventoModel,
+    AsistenciaModel
 )
 
 @admin.register(BarrioModel)
@@ -26,7 +26,7 @@ class BarrioAdmin(admin.ModelAdmin):
     search_fields = ('nombre',)
 
 @admin.register(SocioModel)
-class SocioAdmin(admin.ModelAdmin):
+class SocioAdmin(SimpleHistoryAdmin):
     list_display = ('identificacion', 'apellidos', 'nombres', 'barrio', 'rol', 'esta_activo')
     list_filter = ('rol', 'esta_activo', 'barrio')
     search_fields = ('identificacion', 'nombres', 'apellidos')
@@ -68,7 +68,7 @@ class MedidorAdmin(admin.ModelAdmin):
     get_ubicacion.short_description = "Ubicación Actual"
 
 @admin.register(LecturaModel)
-class LecturaAdmin(admin.ModelAdmin):
+class LecturaAdmin(SimpleHistoryAdmin):
     list_display = (
         'id', 
         'get_medidor_codigo', 
@@ -89,7 +89,7 @@ class LecturaAdmin(admin.ModelAdmin):
 
 # --- ✅ SECCIÓN DE MULTAS (NUEVO) ---
 @admin.register(MultaModel)
-class MultaAdmin(admin.ModelAdmin):
+class MultaAdmin(SimpleHistoryAdmin):
     list_display = ('id', 'socio', 'motivo', 'valor', 'estado', 'fecha_registro')
     list_filter = ('estado', 'fecha_registro')
     search_fields = ('socio__nombres', 'socio__identificacion', 'motivo')
@@ -110,7 +110,7 @@ class PagoInline(admin.TabularInline):
     readonly_fields = ('fecha_registro',)
 
 @admin.register(FacturaModel)
-class FacturaAdmin(admin.ModelAdmin):
+class FacturaAdmin(SimpleHistoryAdmin):
     list_display = ('id', 'get_socio', 'fecha_emision', 'total', 'estado', 'estado_sri')
     list_filter = ('estado', 'estado_sri', 'fecha_emision')
     search_fields = ('socio__identificacion', 'sri_clave_acceso') 
@@ -125,7 +125,7 @@ class FacturaAdmin(admin.ModelAdmin):
         return "N/A"
 
 @admin.register(PagoModel)
-class PagoAdmin(admin.ModelAdmin):
+class PagoAdmin(SimpleHistoryAdmin):
     list_display = ('id', 'factura', 'metodo', 'monto', 'referencia', 'fecha_registro')
     list_filter = ('metodo',)
 
@@ -182,7 +182,7 @@ class EventoAdmin(admin.ModelAdmin):
     actions = [generar_asistencia_masiva]
 
 @admin.register(AsistenciaModel)
-class AsistenciaAdmin(admin.ModelAdmin):
+class AsistenciaAdmin(SimpleHistoryAdmin):
     list_display = ('get_evento', 'get_socio', 'estado', 'estado_justificacion')
     list_filter = ('evento', 'estado', 'estado_justificacion')
     search_fields = ('socio__nombres', 'socio__apellidos', 'evento__nombre')

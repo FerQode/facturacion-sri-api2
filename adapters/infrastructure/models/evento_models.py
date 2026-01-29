@@ -4,6 +4,7 @@ from core.domain.evento import TipoEvento, EstadoEvento
 from core.domain.asistencia import EstadoJustificacion, EstadoAsistencia
 from adapters.infrastructure.models.socio_model import SocioModel
 from adapters.infrastructure.models.factura_model import FacturaModel
+from simple_history.models import HistoricalRecords
 
 class EventoModel(models.Model):
     nombre = models.CharField(max_length=200)
@@ -52,3 +53,5 @@ class AsistenciaModel(models.Model):
     def requiere_multa(self):
         """Helper para saber si este registro debe generar deuda"""
         return self.estado == EstadoAsistencia.FALTA.value
+
+    history = HistoricalRecords()

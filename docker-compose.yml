@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # 1. Backend (Django API)
+  web:
+    build: .
+    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=mysql://root:root@db:3306/db_tesis
+      - REDIS_URL=redis://redis:6379/0
+      - DJANGO_SECRET_KEY=dev-secret-key-docker
+      - DEBUG=True
+    depends_on:
+      - db
+      - redis
+
+  # 2. Base de Datos (MySQL)
+  db:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_DATABASE: db_tesis
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    # Healthcheck para esperar que la BD esté lista
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      timeout: 20s
+      retries: 10
+
+  # 3. Cache & Celery Broker (Redis)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  mysql_data:
+  redis_data:

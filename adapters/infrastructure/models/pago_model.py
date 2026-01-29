@@ -1,5 +1,6 @@
 # adapters/infrastructure/models/pago_model.py
 from django.db import models
+from simple_history.models import HistoricalRecords
 from .factura_model import FacturaModel
 
 class PagoModel(models.Model):
@@ -45,3 +46,5 @@ class PagoModel(models.Model):
 
     def __str__(self):
         return f"Pago {self.metodo} - ${self.monto} (Fac: {self.factura.id})"
+
+    history = HistoricalRecords()

@@ -1,5 +1,6 @@
 # adapters>infrastructure>models>lectura_model.py
 from django.db import models
+from simple_history.models import HistoricalRecords
 from .medidor_model import MedidorModel
 
 class LecturaModel(models.Model):
@@ -65,3 +66,5 @@ class LecturaModel(models.Model):
 
     def __str__(self):
         return f"Medidor {self.medidor_id} - {self.fecha}: {self.valor} m3"
+        
+    history = HistoricalRecords()

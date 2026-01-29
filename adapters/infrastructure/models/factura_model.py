@@ -2,6 +2,7 @@
 from django.db import models
 from django.utils import timezone
 from decimal import Decimal
+from simple_history.models import HistoricalRecords
 from .socio_model import SocioModel
 from .medidor_model import MedidorModel
 from .lectura_model import LecturaModel
@@ -75,6 +76,8 @@ class FacturaModel(models.Model):
         # Evita doble facturación del mismo servicio en el mismo mes
         unique_together = ['servicio', 'anio', 'mes']
 
+    history = HistoricalRecords()
+
 
 # El detalle se mantiene igual, está perfecto.
 class DetalleFacturaModel(models.Model):
@@ -86,3 +89,8 @@ class DetalleFacturaModel(models.Model):
 
     class Meta:
         db_table = 'facturas_detalles'
+
+    def __str__(self):
+        return f"{self.concepto} - {self.subtotal}"
+
+    history = HistoricalRecords()

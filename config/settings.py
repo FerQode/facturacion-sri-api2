@@ -88,6 +88,9 @@ INSTALLED_APPS = [
     # Local Apps (Arquitectura Limpia)
     'adapters.api.apps.ApiConfig',
     'adapters.infrastructure.apps.InfrastructureConfig',
+    
+    # Audit
+    'simple_history',
 ]
 
 # ==============================================================================
@@ -101,6 +104,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'simple_history.middleware.HistoryRequestMiddleware', # ✅ Audit Middleware
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]

@@ -1,5 +1,6 @@
 # adapters/infrastructure/models/socio_model.py
 from django.db import models
+from simple_history.models import HistoricalRecords
 from django.contrib.auth.models import User
 from core.shared.enums import RolUsuario
 from .barrio_model import BarrioModel
@@ -58,3 +59,5 @@ class SocioModel(models.Model):
 
     def __str__(self):
         return f"{self.nombres} {self.apellidos} ({self.identificacion})"
+
+    history = HistoricalRecords()
