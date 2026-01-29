@@ -48,15 +48,19 @@ jobs:
         run: |
           python manage.py test
 
-      # 4. (Solo si Tests Pasan) PROMOCIONAR A PRODUCCION (Merge to Main)
+          # 4. (Solo si Tests Pasan) PROMOCIONAR A PRODUCCION (Merge to Main)
       - name: Promote to Main (Production)
         if: success() # Condición explícita
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
           
-          # Cambiar a rama main y fusionar develop
-          git checkout main || git checkout -b main
+          # Sincronizar con la última versión de main para evitar errores de push
+          git fetch origin main
+          git checkout main || git checkout -b main origin/main
+          git pull origin main
+          
+          # Fusionar develop
           git merge develop --allow-unrelated-histories -m "chore(release): auto-promote from develop [skip ci]"
           
           # Subir cambios a main
