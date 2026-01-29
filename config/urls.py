@@ -19,7 +19,16 @@ schema_view = get_schema_view(
    openapi.Info(
       title="API Junta de Agua 'El Arbolito' & SRI",
       default_version='v1',
-      description="Documentación técnica del Sistema de Gestión de Agua y Facturación Electrónica.",
+      description="""
+      **Sistema de Gestión de Agua y Facturación Electrónica.**
+      
+      **GUÍA DE AUTENTICACIÓN:**
+      1. Genera tu token en `/api/v1/token/`.
+      2. Copia el valor de `access`.
+      3. Haz clic en el botón **Authorize** (candado gris).
+      4. Escribe: `Bearer TU_TOKEN_AQUI` (respetando el espacio).
+      5. Haz clic en 'Authorize' y 'Close'.
+      """,
       contact=openapi.Contact(email="admin@juntaarbolito.com"),
       license=openapi.License(name="BSD License"),
    ),
