@@ -41,5 +41,5 @@ RUN DJANGO_SECRET_KEY=build-mode-only python manage.py collectstatic --noinput
 RUN addgroup --system appgroup && adduser --system --group appuser
 USER appuser
 
-# 8. Comando por defecto (Será sobreescrito por docker-compose o Railway)
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000"]
+# 8. Comando por defecto (Usando variable PORT de Railway o 8000 por defecto)
+CMD ["sh", "-c", "gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000}"]
