@@ -33,6 +33,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # 6. Copiar el Código Fuente
 COPY . /app/
 
+# 6.1. Generar Archivos Estáticos (CSS/JS) para Producción
+# Usamos una clave falsa temporal solo para que corra este comando
+RUN DJANGO_SECRET_KEY=build-mode-only python manage.py collectstatic --noinput
+
 # 7. Crear usuario no-root por seguridad
 RUN addgroup --system appgroup && adduser --system --group appuser
 USER appuser
