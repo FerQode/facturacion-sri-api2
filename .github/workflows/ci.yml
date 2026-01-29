@@ -1,0 +1,61 @@
+name: ERP El Arbolito - CI Pipeline
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    # 1. Definimos Servicios (Base de Datos Temporal)
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: db_tesis
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+    # 2. Obtener el código
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    # 3. Configurar Python
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: 'pip' # Cachea dependencias para que sea más rápido
+
+    # 4. Instalar Dependencias
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    # 5. Análisis de Calidad (Linting)
+    - name: Run Flake8 (Linting)
+      run: |
+        # E501: Ignorar líneas largas (>79) porque Django suele tenerlas
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics
+
+    # 6. Ejecutar Pruebas Automatizadas
+    - name: Run Tests
+      env:
+        # Variables de entorno para el test runner
+        DATABASE_URL: mysql://root:root@127.0.0.1:3306/db_tesis
+        DJANGO_SECRET_KEY: test-key-ci-pipeline
+        DEBUG: True
+      run: |
+        python manage.py test

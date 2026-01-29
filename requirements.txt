@@ -1,0 +1,31 @@
+# Django Core
+Django>=5.0,<6.0
+djangorestframework
+django-cors-headers
+
+# Authentication & Documentation
+djangorestframework-simplejwt
+drf-yasg
+django-simple-history
+
+# Utilities & Environment
+python-dotenv
+python-stdnum
+requests
+Pillow
+
+# SRI (XML & SOAP)
+lxml
+zeep
+
+# Database & Deployment (Railway)
+mysqlclient
+dj-database-url
+gunicorn
+whitenoise
+psycopg2-binary
+
+# Asynchronous Tasks (Celery + Redis)
+celery
+redis
+flake8

@@ -35,12 +35,18 @@ class DjangoSRIService(ISRIService):
 
     def __init__(self):
         try:
-            # Validación básica de configuración
-            if not hasattr(settings, 'SRI_FIRMA_PATH') or not settings.SRI_FIRMA_PATH:
-                raise ValueError("SRI_FIRMA_PATH no está configurado en settings.")
+            # Validación: Debe existir O la ruta física O el Base64
+            has_path = hasattr(settings, 'SRI_FIRMA_PATH') and settings.SRI_FIRMA_PATH
+            has_base64 = hasattr(settings, 'SRI_FIRMA_BASE64') and settings.SRI_FIRMA_BASE64
+
+            if not has_path and not has_base64:
+                raise ValueError("ERROR CONFIG: Debe definir SRI_FIRMA_PATH (Local) o SRI_FIRMA_BASE64 (Nube).")
+
+            # Si hay path, lo usamos. Si no, pasamos None y lo manejamos en _firmar_xml
+            firma_path_val = str(settings.SRI_FIRMA_PATH) if has_path else None
 
             self.auth = SRIAuthData(
-                firma_path=str(settings.SRI_FIRMA_PATH),
+                firma_path=firma_path_val,
                 firma_pass=settings.SRI_FIRMA_PASS,
                 sri_url_recepcion=settings.SRI_URL_RECEPCION,
                 sri_url_autorizacion=settings.SRI_URL_AUTORIZACION
@@ -51,7 +57,6 @@ class DjangoSRIService(ISRIService):
             self.soap_client_autorizacion = zeep.Client(self.auth.sri_url_autorizacion)
 
             # Ruta absoluta al JAR de firma (Basado en tu estructura de carpetas)
-            # facturacion-sri-api2/adapters/infrastructure/files/jar/sri.jar
             self.jar_path = os.path.join(
                 settings.BASE_DIR,
                 'adapters', 'infrastructure', 'files', 'jar', 'sri.jar'
@@ -137,7 +142,7 @@ class DjangoSRIService(ISRIService):
             etree.SubElement(info_tributaria, "tipoEmision").text = "1"
             etree.SubElement(info_tributaria, "razonSocial").text = settings.SRI_EMISOR_RAZON_SOCIAL
             etree.SubElement(info_tributaria, "nombreComercial").text = settings.SRI_NOMBRE_COMERCIAL
-            etree.SubElement(info_tributaria, "ruc").text = emisor_ruc
+            etree.SubElement(info_tributaria, "ruc").text = settings.SRI_EMISOR_RUC
             etree.SubElement(info_tributaria, "claveAcceso").text = clave_acceso
             etree.SubElement(info_tributaria, "codDoc").text = "01"
             etree.SubElement(info_tributaria, "estab").text = settings.SRI_SERIE_ESTABLECIMIENTO
@@ -225,28 +230,48 @@ class DjangoSRIService(ISRIService):
     def _firmar_xml_java(self, xml_string: str, clave_acceso: str) -> str:
         """
         Ejecuta el archivo .jar para firmar el XML.
+        Soporta firma desde archivo local O desde variable de entorno Base64.
         """
         logger.info("Iniciando proceso de firma con Java...")
-
-        # 1. Crear archivo temporal para el XML sin firma
-        with NamedTemporaryFile(suffix='.xml', delete=False) as temp_input:
-            temp_input.write(xml_string.encode('utf-8'))
-            temp_input_path = temp_input.name
-
-        # El JAR guarda el output en la misma carpeta que el input, o podemos definir nombre
-        # El Proyecto A usaba: [java, -jar, jar, p12, pass, xml_input, path_base, nombre_salida]
-
-        nombre_xml_salida = f"{clave_acceso}_signed.xml"
-        # Directorio temporal donde se guardará el firmado
-        output_dir = os.path.dirname(temp_input_path)
-        path_xml_firmado = os.path.join(output_dir, nombre_xml_salida)
+        
+        temp_input_path = ""
+        path_xml_firmado = ""
+        temp_p12_path = "" # Path del archivo P12 temporal (si se usa Base64)
 
         try:
-            # Comando exacto para el JAR (Adaptado de sri.py del Proy A)
+            # 1. Resolver el archivo P12
+            p12_path_to_use = self.auth.firma_path
+            
+            # Prioridad: Base64 (Nube/Railway)
+            base64_firma = getattr(settings, 'SRI_FIRMA_BASE64', None)
+            
+            if base64_firma:
+                logger.info("🔑 Usando Firma Electrónica desde variable de entorno (Base64)")
+                # Creamos archivo temporal P12
+                # delete=False para que Windows/Java pueda leerlo sin bloqueos, lo borramos en finally
+                with NamedTemporaryFile(suffix='.p12', delete=False) as temp_p12:
+                    temp_p12.write(base64.b64decode(base64_firma))
+                    temp_p12_path = temp_p12.name
+                    p12_path_to_use = temp_p12_path
+            
+            if not p12_path_to_use or not os.path.exists(p12_path_to_use):
+                raise FileNotFoundError(f"No se encontró archivo de firma física ni Base64 valido. Ruta intentada: {p12_path_to_use}")
+
+            # 2. Crear archivo temporal para el XML sin firma
+            with NamedTemporaryFile(suffix='.xml', delete=False) as temp_input:
+                temp_input.write(xml_string.encode('utf-8'))
+                temp_input_path = temp_input.name
+
+            # El JAR guarda el output en la misma carpeta que el input
+            nombre_xml_salida = f"{clave_acceso}_signed.xml"
+            output_dir = os.path.dirname(temp_input_path)
+            path_xml_firmado = os.path.join(output_dir, nombre_xml_salida)
+
+            # Comando exacto para el JAR
             commands = [
                 'java',
                 '-jar', self.jar_path,
-                self.auth.firma_path,
+                p12_path_to_use,      # Usamos el path resuelto (Local o Temp)
                 self.auth.firma_pass,
                 temp_input_path,
                 output_dir,
@@ -263,7 +288,6 @@ class DjangoSRIService(ISRIService):
 
             # Leer el archivo firmado resultante
             if not os.path.exists(path_xml_firmado):
-                 # A veces el jar falla silenciosamente, verificar output
                  raise FileNotFoundError(f"El JAR no generó el archivo firmado en {path_xml_firmado}. Output: {result.stdout}")
 
             with open(path_xml_firmado, 'r', encoding='utf-8') as f:
@@ -276,10 +300,20 @@ class DjangoSRIService(ISRIService):
             raise e
         finally:
             # Limpieza de archivos temporales
-            if os.path.exists(temp_input_path):
-                os.remove(temp_input_path)
-            if os.path.exists(path_xml_firmado):
-                os.remove(path_xml_firmado)
+            # 1. XML Input
+            if temp_input_path and os.path.exists(temp_input_path):
+                try: os.remove(temp_input_path)
+                except: pass
+            
+            # 2. XML Output (Firmado)
+            if path_xml_firmado and os.path.exists(path_xml_firmado):
+                try: os.remove(path_xml_firmado)
+                except: pass
+                
+            # 3. P12 Temporal (Si se creó)
+            if temp_p12_path and os.path.exists(temp_p12_path):
+                try: os.remove(temp_p12_path)
+                except: pass
 
     # --- 4. ENVÍO Y PARSEO (SOAP) ---
 

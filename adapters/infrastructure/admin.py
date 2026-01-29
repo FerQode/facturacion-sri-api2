@@ -1,19 +1,23 @@
 # adapters/infrastructure/admin.py
-
 from django.contrib import admin
+from core.domain.asistencia import EstadoAsistencia, EstadoJustificacion
+from simple_history.admin import SimpleHistoryAdmin
 
 # 1. Importamos los modelos
 # (Asegúrate de que TODOS existan en models/__init__.py, tal como lo actualizamos antes)
 from .models import (
-    SocioModel, 
-    MedidorModel, 
-    LecturaModel, 
-    BarrioModel, 
+    SocioModel,
+    MedidorModel,
+    LecturaModel,
+    BarrioModel,
     TerrenoModel,
-    FacturaModel,        
+    FacturaModel,
     DetalleFacturaModel,
-    MultaModel,  # ✅ NUEVO
-    PagoModel    # ✅ NUEVO
+    MultaModel,
+    PagoModel,
+    ServicioModel,
+    EventoModel,
+    AsistenciaModel
 )
 
 @admin.register(BarrioModel)
@@ -22,7 +26,7 @@ class BarrioAdmin(admin.ModelAdmin):
     search_fields = ('nombre',)
 
 @admin.register(SocioModel)
-class SocioAdmin(admin.ModelAdmin):
+class SocioAdmin(SimpleHistoryAdmin):
     list_display = ('identificacion', 'apellidos', 'nombres', 'barrio', 'rol', 'esta_activo')
     list_filter = ('rol', 'esta_activo', 'barrio')
     search_fields = ('identificacion', 'nombres', 'apellidos')
@@ -64,7 +68,7 @@ class MedidorAdmin(admin.ModelAdmin):
     get_ubicacion.short_description = "Ubicación Actual"
 
 @admin.register(LecturaModel)
-class LecturaAdmin(admin.ModelAdmin):
+class LecturaAdmin(SimpleHistoryAdmin):
     list_display = (
         'id', 
         'get_medidor_codigo', 
@@ -85,7 +89,7 @@ class LecturaAdmin(admin.ModelAdmin):
 
 # --- ✅ SECCIÓN DE MULTAS (NUEVO) ---
 @admin.register(MultaModel)
-class MultaAdmin(admin.ModelAdmin):
+class MultaAdmin(SimpleHistoryAdmin):
     list_display = ('id', 'socio', 'motivo', 'valor', 'estado', 'fecha_registro')
     list_filter = ('estado', 'fecha_registro')
     search_fields = ('socio__nombres', 'socio__identificacion', 'motivo')
@@ -106,7 +110,7 @@ class PagoInline(admin.TabularInline):
     readonly_fields = ('fecha_registro',)
 
 @admin.register(FacturaModel)
-class FacturaAdmin(admin.ModelAdmin):
+class FacturaAdmin(SimpleHistoryAdmin):
     list_display = ('id', 'get_socio', 'fecha_emision', 'total', 'estado', 'estado_sri')
     list_filter = ('estado', 'estado_sri', 'fecha_emision')
     search_fields = ('socio__identificacion', 'sri_clave_acceso') 
@@ -121,6 +125,75 @@ class FacturaAdmin(admin.ModelAdmin):
         return "N/A"
 
 @admin.register(PagoModel)
-class PagoAdmin(admin.ModelAdmin):
+class PagoAdmin(SimpleHistoryAdmin):
     list_display = ('id', 'factura', 'metodo', 'monto', 'referencia', 'fecha_registro')
     list_filter = ('metodo',)
+
+# --- ✅ SECCIÓN DE SERVICIOS AGUA (NUEVO) ---
+@admin.register(ServicioModel)
+class ServicioAguaAdmin(admin.ModelAdmin):
+    list_display = ('id', 'get_socio_nombre', 'tipo', 'valor_tarifa', 'activo', 'fecha_instalacion')
+
+    list_filter = ('tipo', 'activo', 'fecha_instalacion')
+    search_fields = ('socio__nombres', 'socio__apellidos', 'socio__identificacion')
+    autocomplete_fields = ['socio', 'terreno']
+
+    def get_socio_nombre(self, obj):
+        return f"{obj.socio.nombres} {obj.socio.apellidos}"
+    get_socio_nombre.short_description = "Socio"
+
+# --- ✅ FASE 2: GESTIÓN DE EVENTOS Y MINGAS ---
+
+@admin.action(description="👥 Generar lista de asistencia (Todos los socios)")
+def generar_asistencia_masiva(modeladmin, request, queryset):
+    """
+    Crea registros de Asistencia para TODOS los socios activos en el evento seleccionado.
+    Default: Estado PENDIENTE.
+    """
+    for evento in queryset:
+        socios_activos = SocioModel.objects.filter(esta_activo=True)
+        creados = 0
+        for socio in socios_activos:
+            # get_or_create evita duplicados si ya existen
+            obj, created = AsistenciaModel.objects.get_or_create(
+                evento=evento,
+                socio=socio,
+                defaults={'estado': EstadoAsistencia.PENDIENTE.value}
+            )
+            if created:
+                creados += 1
+        modeladmin.message_user(request, f"✅ Se generaron {creados} boletas de asistencia para: {evento.nombre}")
+
+@admin.action(description="✅ Marcar como PRESENTE")
+def marcar_presente(modeladmin, request, queryset):
+    updated = queryset.update(estado=EstadoAsistencia.PRESENTE.value)
+    modeladmin.message_user(request, f"{updated} socios marcados como PRESENTES.")
+
+@admin.action(description="❌ Marcar como FALTA (Injustificada)")
+def marcar_falta(modeladmin, request, queryset):
+    updated = queryset.update(estado=EstadoAsistencia.FALTA.value)
+    modeladmin.message_user(request, f"{updated} socios marcados con FALTA.")
+
+@admin.register(EventoModel)
+class EventoAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'tipo', 'fecha', 'valor_multa', 'estado')
+    list_filter = ('tipo', 'estado', 'fecha')
+    search_fields = ('nombre',)
+    actions = [generar_asistencia_masiva]
+
+@admin.register(AsistenciaModel)
+class AsistenciaAdmin(SimpleHistoryAdmin):
+    list_display = ('get_evento', 'get_socio', 'estado', 'estado_justificacion')
+    list_filter = ('evento', 'estado', 'estado_justificacion')
+    search_fields = ('socio__nombres', 'socio__apellidos', 'evento__nombre')
+    list_editable = ('estado',) # ¡Permite marcar rápido desde la lista!
+    actions = [marcar_presente, marcar_falta]
+    autocomplete_fields = ['socio', 'evento']
+
+    def get_evento(self, obj):
+        return f"{obj.evento.nombre} ({obj.evento.fecha})"
+    get_evento.short_description = "Evento"
+
+    def get_socio(self, obj):
+        return f"{obj.socio.apellidos} {obj.socio.nombres}"
+    get_socio.short_description = "Socio"

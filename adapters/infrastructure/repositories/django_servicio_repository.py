@@ -24,3 +24,10 @@ class DjangoServicioRepository(IServicioRepository):
         qs = ServicioModel.objects.filter(socio_id=socio_id)
         # Return simpler dicts/objects for DTO mapping
         return list(qs.values('id', 'terreno_id', 'tipo'))
+
+    def get_active_by_terreno_and_type(self, terreno_id: int, tipo: str) -> Any:
+        return ServicioModel.objects.filter(
+            terreno_id=terreno_id,
+            tipo=tipo,
+            activo=True
+        ).first()

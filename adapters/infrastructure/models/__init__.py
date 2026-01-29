@@ -14,7 +14,8 @@ from .factura_model import FacturaModel, DetalleFacturaModel
 from .multa_model import MultaModel
 from .pago_model import PagoModel
 # ✅ AQUI ESTABA EL ERROR: Faltaba esta línea
-from .servicio_model import ServicioModel 
+from .servicio_model import ServicioModel
+from .evento_models import EventoModel, AsistenciaModel # ✅ NUEVO FASE 2 
 
 # 4. Actualizamos la lista __all__ para exportar todo limpiamente
 __all__ = [
@@ -27,5 +28,7 @@ __all__ = [
     'DetalleFacturaModel',
     'MultaModel',
     'PagoModel',
-    'ServicioModel', # ✅ Agregado a la lista pública
+    'ServicioModel',
+    'EventoModel', 
+    'AsistenciaModel',
 ]

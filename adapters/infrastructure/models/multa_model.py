@@ -1,4 +1,6 @@
+# adapters/infrastructure/models/multa_model.py
 from django.db import models
+from simple_history.models import HistoricalRecords
 from .socio_model import SocioModel
 
 class MultaModel(models.Model):
@@ -30,6 +32,8 @@ class MultaModel(models.Model):
 
     def __str__(self):
         return f"{self.motivo} - ${self.valor} ({self.estado})"
+        
+    history = HistoricalRecords()
 
     class Meta:
         db_table = 'multas'

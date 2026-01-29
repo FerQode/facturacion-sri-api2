@@ -1,10 +1,10 @@
+# core/interfaces/repositories.py
 from abc import ABC, abstractmethod
-from typing import List, Optional, Any, Protocol, runtime_checkable, Dict
+from typing import List, Optional, Any
 from decimal import Decimal
 from core.domain.factura import Factura
 from core.domain.socio import Socio
 # Usamos Any para evitar imports circulares si Lectura no está disponible fácilmente
-# o importamos dentro de TYPE_CHECKING
 try:
     from core.domain.lectura import Lectura
 except ImportError:
@@ -19,6 +19,8 @@ try:
     from core.domain.multa import Multa
 except ImportError:
     Multa = Any
+
+# --- Interfaces de Dominio ---
 
 class IFacturaRepository(ABC):
     @abstractmethod
@@ -36,7 +38,7 @@ class IFacturaRepository(ABC):
         """Persiste los cambios de la factura. Retorna la factura guardada (o None)"""
         pass
     
-    # Alias para compatibilidad con código legacy (GenerarFacturaUseCase usa .save())
+    # Alias para compatibilidad con código legacy
     def save(self, factura: Factura) -> Any:
         return self.guardar(factura)
 
@@ -53,54 +55,18 @@ class IFacturaRepository(ABC):
 class IPagoRepository(ABC):
     @abstractmethod
     def obtener_sumatoria_validada(self, factura_id: int) -> float:
-        """Retorna la suma de pagos (Transferencias) ya validados"""
         pass
     
     @abstractmethod
     def tiene_pagos_pendientes(self, factura_id: int) -> bool:
-        """Verifica si hay pagos subidos pero no validados (Candado de Seguridad)"""
         pass
 
     @abstractmethod
     def registrar_pagos(self, factura_id: int, pagos: List[dict]) -> None:
-        """
-        Guarda nuevos pagos (Efectivo, Transferencia, etc).
-        En el caso de Transferencias mixtas en caja, se asumen validadas.
-        """
         pass
 
     @abstractmethod
     def obtener_ultimos_pagos(self, socio_id: int, limite: int = 5) -> List[Any]:
-        """Retorna el historial reciente de pagos del socio via recibos"""
-        pass
-
-# ... (Existing code) ...
-
-class ITerrenoRepository(ABC):
-    @abstractmethod
-    def get_by_id(self, terreno_id: int) -> Optional[Any]:
-        pass
-
-    @abstractmethod
-    def get_by_socio(self, socio_id: int) -> List[Any]:
-        """Retorna los terrenos asociados a un socio"""
-        pass
-    @abstractmethod
-    def obtener_sumatoria_validada(self, factura_id: int) -> float:
-        """Retorna la suma de pagos (Transferencias) ya validados"""
-        pass
-    
-    @abstractmethod
-    def tiene_pagos_pendientes(self, factura_id: int) -> bool:
-        """Verifica si hay pagos subidos pero no validados (Candado de Seguridad)"""
-        pass
-
-    @abstractmethod
-    def registrar_pagos(self, factura_id: int, pagos: List[dict]) -> None:
-        """
-        Guarda nuevos pagos (Efectivo, Transferencia, etc).
-        En el caso de Transferencias mixtas en caja, se asumen validadas.
-        """
         pass
 
 class IAuthRepository(ABC):
@@ -150,8 +116,6 @@ class IMultaRepository(ABC):
     def save(self, multa: Any) -> Any:
         pass
 
-# --- Interfaces Restauradas (Legacy Support) ---
-
 class ILecturaRepository(ABC):
     @abstractmethod
     def get_latest_by_medidor(self, medidor_id: int) -> Optional[Lectura]:
@@ -168,17 +132,18 @@ class ILecturaRepository(ABC):
 class IServicioRepository(ABC):
     @abstractmethod
     def obtener_servicios_fijos_activos(self) -> List[Any]:
-        """Retorna lista (o QuerySet) de servicios activos de tarifa fija"""
         pass
 
     @abstractmethod
     def create_automatico(self, terreno_id: int, socio_id: int, tipo: str, valor: float) -> Any:
-        """Crea un servicio automáticamente al registrar un terreno"""
         pass
 
     @abstractmethod
     def get_by_socio(self, socio_id: int) -> List[Any]:
-        """Retorna los servicios asociados al socio para mapeo"""
+        pass
+
+    @abstractmethod
+    def get_active_by_terreno_and_type(self, terreno_id: int, tipo: str) -> Optional[Any]:
         pass
 
 class IMedidorRepository(ABC):
@@ -188,18 +153,15 @@ class IMedidorRepository(ABC):
 
 class ISocioRepository(ABC):
     @abstractmethod
-    @abstractmethod
     def get_by_id(self, socio_id: int) -> Optional[Socio]:
         pass
 
     @abstractmethod
     def list_active(self) -> List[Socio]:
-        """Listar todos los socios activos"""
         pass
 
     @abstractmethod
     def list_by_barrio(self, barrio_id: int) -> List[Socio]:
-        """Listar socios activos de un barrio"""
         pass
 
 class ITerrenoRepository(ABC):
@@ -207,15 +169,17 @@ class ITerrenoRepository(ABC):
     def get_by_id(self, terreno_id: int) -> Optional[Any]:
         pass
 
-
+    @abstractmethod
+    def get_by_socio(self, socio_id: int) -> List[Any]:
+        pass
 
 try:
-    from core.domain.evento import Evento, TipoEvento, EstadoEvento
+    from core.domain.evento import Evento
 except ImportError:
     Evento = Any
 
 try:
-    from core.domain.asistencia import Asistencia, EstadoJustificacion
+    from core.domain.asistencia import Asistencia
 except ImportError:
     Asistencia = Any
 
@@ -243,9 +207,20 @@ class IAsistenciaRepository(ABC):
         
     @abstractmethod
     def crear_masivo(self, asistencias: List[Asistencia]) -> List[Asistencia]:
-        """Insert masivo para optimizar"""
         pass
 
     @abstractmethod
     def save(self, asistencia: Asistencia) -> Asistencia:
+        pass
+
+class IGobernanzaRepository(ABC):
+    """
+    Puerto para acceder a multas y gobernanza sin acoplarse a Django.
+    """
+    @abstractmethod
+    def obtener_multas_pendientes(self, socio_id: int) -> List[Any]: # Retorna lista de Asistencias (Domain o DTO)
+        pass
+
+    @abstractmethod
+    def marcar_multa_como_facturada(self, asistencia_id: int, factura_id: int) -> None:
         pass

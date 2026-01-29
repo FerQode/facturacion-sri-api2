@@ -15,7 +15,8 @@ from .views import (
     servicio_agua_views, # ✅ AGREGADO: Importamos la vista del Servicio de Agua
     cobro_views,
     sri_views, # ✅ AGREGADO: Vista para sincronización SRI
-    gobernanza_views # ✅ AGREGADO: Módulo de Gobernanza
+    gobernanza_views, # ✅ AGREGADO: Módulo de Gobernanza
+    analytics_views # ✅ AGREGADO: Reportes y KPIs (Fase 4)
 )
 
 # ==============================================================================
@@ -58,6 +59,10 @@ router.register(r'cobros', cobro_views.CobroViewSet, basename='cobros')
 # 7. SRI (Sincronización y Reintentos)
 # Genera: POST /api/v1/sri/{pk}/sincronizar/
 router.register(r'sri', sri_views.SRIViewSet, basename='sri')
+
+# 8. Reportes Inteligentes (Fase 4)
+# Genera: GET /api/v1/analytics/dashboard-kpis/
+router.register(r'analytics', analytics_views.AnalyticsViewSet, basename='analytics')
 
 
 # ==============================================================================

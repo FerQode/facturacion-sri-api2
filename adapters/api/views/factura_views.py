@@ -16,7 +16,7 @@ from core.use_cases.generar_factura_uc import GenerarFacturaDesdeLecturaUseCase
 from core.use_cases.registrar_cobro_uc import RegistrarCobroUseCase
 from core.use_cases.generar_factura_fija_uc import GenerarFacturaFijaUseCase
 from core.services.facturacion_service import FacturacionService
-from core.use_cases.generar_factura_fija_uc import GenerarFacturaFijaUseCase
+
 # --- Clean Architecture: Excepciones ---
 from core.shared.exceptions import (
     LecturaNoEncontradaError,
@@ -33,10 +33,10 @@ from adapters.infrastructure.repositories.django_medidor_repository import Djang
 from adapters.infrastructure.repositories.django_socio_repository import DjangoSocioRepository
 from adapters.infrastructure.repositories.django_terreno_repository import DjangoTerrenoRepository
 from adapters.infrastructure.repositories.django_multa_repository import DjangoMultaRepository
-from adapters.infrastructure.repositories.django_servicio_repository import DjangoServicioRepository # ✅ NEW
+from adapters.infrastructure.repositories.django_servicio_repository import DjangoServicioRepository
+from adapters.infrastructure.repositories.django_gobernanza_repository import DjangoGobernanzaRepository # ✅ NEW Phase 3 Repo
 
 # --- Adapters: Modelos ---
-# ✅ MODIFICADO: Agregamos FacturaModel para consultar deudas directas
 from adapters.infrastructure.models import LecturaModel, FacturaModel
 
 # --- Adapters: Servicios ---
@@ -89,6 +89,7 @@ class GenerarFacturaAPIView(APIView):
         socio_repo = DjangoSocioRepository()
         terreno_repo = DjangoTerrenoRepository()
         sri_service = DjangoSRIService()
+        gobernanza_repo = DjangoGobernanzaRepository()
 
         use_case = GenerarFacturaDesdeLecturaUseCase(
             factura_repo=factura_repo,
@@ -96,7 +97,8 @@ class GenerarFacturaAPIView(APIView):
             medidor_repo=medidor_repo,
             terreno_repo=terreno_repo,
             socio_repo=socio_repo,
-            sri_service=sri_service
+            servicio_repo=DjangoServicioRepository(),
+            gobernanza_repo=gobernanza_repo
         )
 
         try:
@@ -143,7 +145,6 @@ class GenerarFacturasFijasAPIView(APIView):
             mes = request.data.get('mes')
             
             # Fecha de Emision Legal (Opcional, por defecto hoy)
-            # Puede ser distinto al periodo fiscal (Ej: Facturo Diciembre en Enero)
             fecha_emision_str = request.data.get('fecha_emision')
             fecha_emision = date.fromisoformat(fecha_emision_str) if fecha_emision_str else None
 
@@ -190,7 +191,7 @@ class FacturaMasivaViewSet(viewsets.ViewSet):
         """
         # 1. Capturamos TODOS los parámetros
         cedula = request.query_params.get('cedula')
-        dia = request.query_params.get('dia')   # ¡Ojo! Agregué 'dia' porque vi en tu log que lo envías
+        dia = request.query_params.get('dia')
         mes = request.query_params.get('mes')
         anio = request.query_params.get('anio')
         ver_historial = request.query_params.get('ver_historial')
@@ -306,11 +307,14 @@ class FacturaMasivaViewSet(viewsets.ViewSet):
             medidor_repo = DjangoMedidorRepository()
             socio_repo = DjangoSocioRepository()
             terreno_repo = DjangoTerrenoRepository()
+            servicio_repo = DjangoServicioRepository()
+            gobernanza_repo = DjangoGobernanzaRepository()
+            
             sri_service = DjangoSRIService()
 
             use_case_medidor = GenerarFacturaDesdeLecturaUseCase(
                 factura_repo, lectura_repo, medidor_repo,
-                terreno_repo, socio_repo
+                terreno_repo, socio_repo, servicio_repo, gobernanza_repo
             )
 
             # Procesamos a Edison y compañía

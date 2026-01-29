@@ -23,7 +23,9 @@ from core.interfaces.repositories import (
     ILecturaRepository,
     IMedidorRepository,
     ISocioRepository,
-    ITerrenoRepository
+    ITerrenoRepository,
+    IServicioRepository,
+    IGobernanzaRepository # ✅ Nuevo Dependency Fase 3
 )
 
 # DTOs
@@ -41,12 +43,16 @@ class GenerarFacturaDesdeLecturaUseCase:
         medidor_repo: IMedidorRepository,
         terreno_repo: ITerrenoRepository,
         socio_repo: ISocioRepository,
+        servicio_repo: IServicioRepository,
+        gobernanza_repo: IGobernanzaRepository, # ✅ Inject Repo
     ):
         self.factura_repo = factura_repo
         self.lectura_repo = lectura_repo
         self.medidor_repo = medidor_repo
         self.terreno_repo = terreno_repo
         self.socio_repo = socio_repo
+        self.servicio_repo = servicio_repo
+        self.gobernanza_repo = gobernanza_repo
 
 
     @transaction.atomic
@@ -91,11 +97,50 @@ class GenerarFacturaDesdeLecturaUseCase:
         )
 
         # 4. CÁLCULOS
+        # 4.1 Obtener Contrato de Servicio (Tarifas Dinámicas)
+        servicio = self.servicio_repo.get_active_by_terreno_and_type(terreno.id, 'MEDIDO')
+        
+        # Defaults de Respaldo
+        tarifa_base_m3 = 15
+        tarifa_base_precio = Decimal("3.00")
+        tarifa_excedente_precio = Decimal("0.25")
+        
+        if servicio:
+            # Factura Enlazada al Servicio (Para reportes)
+            factura.servicio_id = servicio.id
+            
+            # Usar valores de la DB
+            tarifa_base_m3 = servicio.tarifa_basica_m3
+            tarifa_base_precio = servicio.valor_tarifa 
+            tarifa_excedente_precio = servicio.tarifa_excedente_precio
+
         consumo_entero = int(float(lectura.consumo_del_mes_m3))
-        factura.calcular_total_con_medidor(consumo_entero)
+        
+        # 4.2 Calcular usando parámetros
+        factura.calcular_total_con_medidor(
+            consumo_m3=consumo_entero,
+            tarifa_base_m3=tarifa_base_m3,
+            tarifa_base_precio=tarifa_base_precio,
+            tarifa_excedente_precio=tarifa_excedente_precio
+        )
+
+        # 4.3 PROCESAR MULTAS PENDIENTES (FASE 3)
+        multas_pendientes = self.gobernanza_repo.obtener_multas_pendientes(socio.id)
+        if multas_pendientes:
+            for multa in multas_pendientes:
+                # Agregar al detalle de la factura
+                concepto = f"Multa: {multa.evento.nombre} ({multa.evento.fecha})"
+                valor = multa.evento.valor_multa
+                
+                factura.agregar_multa(concepto, valor)
 
         # 5. GUARDAR
         factura = self.factura_repo.save(factura)
+
+        # 5.1 VINCULAR MULTAS A LA FACTURA CREADA
+        if multas_pendientes:
+            for multa in multas_pendientes:
+                self.gobernanza_repo.marcar_multa_como_facturada(multa.id, factura.id)
 
         # 6. CERRAR LECTURA
         lectura.esta_facturada = True
