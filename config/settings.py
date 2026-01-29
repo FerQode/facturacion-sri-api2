@@ -140,8 +140,15 @@ DATABASES = {
     )
 }
 
+# Fallback para el proceso de build (collectstatic) donde no hay base de datos
+if not DATABASES['default']:
+    DATABASES['default'] = {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': ':memory:',
+    }
+
 # Ajuste fino para MySQL en Producción
-if not DEBUG and 'mysql' in DATABASES['default']['ENGINE']:
+if not DEBUG and 'ENGINE' in DATABASES['default'] and 'mysql' in DATABASES['default']['ENGINE']:
     DATABASES['default']['OPTIONS'] = {
         # MySQL suele requerir configuración explícita si el servidor fuerza SSL
         # 'ssl': {'ca': '/path/to/ca-cert.pem'} # Descomentar si Railway te da un certificado CA específico
