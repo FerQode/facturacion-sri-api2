@@ -218,11 +218,14 @@ if DEBUG:
 else:
     CORS_ALLOW_ALL_ORIGINS = False
     # Lista explícita de dominios permitidos (Frontend)
-    # Se leen de una variable de entorno separada por comas
-    CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', '').split(',')
-    # Fallback por si la variable está vacía (Evita crash, pero bloquea acceso)
-    if not CORS_ALLOWED_ORIGINS or CORS_ALLOWED_ORIGINS == ['']:
-        CORS_ALLOWED_ORIGINS = [] 
+    CORS_ALLOWED_ORIGINS_RAW = os.getenv('CORS_ALLOWED_ORIGINS', '')
+    if CORS_ALLOWED_ORIGINS_RAW:
+        CORS_ALLOWED_ORIGINS = [url.strip() for url in CORS_ALLOWED_ORIGINS_RAW.split(',')]
+    else:
+        CORS_ALLOWED_ORIGINS = []
+
+    # Permitir credenciales (Cookies/Tokens)
+    CORS_ALLOW_CREDENTIALS = True 
 
 # ==============================================================================
 # 11. CONFIGURACIÓN SRI (LIMPIA)
