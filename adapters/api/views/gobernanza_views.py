@@ -128,7 +128,7 @@ class EventoViewSet(viewsets.ModelViewSet):
         email_service = DjangoEmailService()
         socio_repo = DjangoSocioRepository()
         
-        use_case = CerrarEventoYMultarUseCase(evento_repo, asistencia_repo, factura_repo, email_service, socio_repo)
+        use_case = CerrarEventoYMultarUseCase(evento_repo, asistencia_repo, email_service, socio_repo)
         
         try:
             from django.db import transaction

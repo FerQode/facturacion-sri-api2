@@ -16,7 +16,8 @@ from .views import (
     cobro_views,
     sri_views, # ✅ AGREGADO: Vista para sincronización SRI
     gobernanza_views, # ✅ AGREGADO: Módulo de Gobernanza
-    analytics_views # ✅ AGREGADO: Reportes y KPIs (Fase 4)
+    analytics_views, # ✅ AGREGADO: Reportes y KPIs (Fase 4)
+    usuario_views # ✅ AGREGADO: Perfil de usuario
 )
 
 # ==============================================================================
@@ -70,6 +71,13 @@ router.register(r'analytics', analytics_views.AnalyticsViewSet, basename='analyt
 # ==============================================================================
 
 urlpatterns = [
+    
+    # --- PERFIL DEL USUARIO LOGUEADO ---
+    path(
+        'usuarios/me/', 
+        usuario_views.UserProfileView.as_view(), 
+        name='user-profile'
+    ),
 
     # --- Módulo de Facturación Individual & SRI ---
     # Endpoint transaccional para crear UNA factura específica desde lectura
