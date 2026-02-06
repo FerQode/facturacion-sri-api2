@@ -17,7 +17,8 @@ from .models import (
     PagoModel,
     ServicioModel,
     EventoModel,
-    AsistenciaModel
+    AsistenciaModel,
+    SRISecuencialModel
 )
 
 @admin.register(BarrioModel)
@@ -197,3 +198,11 @@ class AsistenciaAdmin(SimpleHistoryAdmin):
     def get_socio(self, obj):
         return f"{obj.socio.apellidos} {obj.socio.nombres}"
     get_socio.short_description = "Socio"
+
+# --- ✅ FASE 3: SECUENCIALES SRI (NUEVO) ---
+@admin.register(SRISecuencialModel)
+class SRISecuencialAdmin(admin.ModelAdmin):
+    list_display = ('tipo_comprobante', 'secuencia_actual', 'codigo_establecimiento', 'updated_at')
+    list_filter = ('tipo_comprobante',)
+    search_fields = ('tipo_comprobante',)
+    readonly_fields = ('updated_at',)
