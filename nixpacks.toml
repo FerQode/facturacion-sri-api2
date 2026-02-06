@@ -1,25 +1,25 @@
 # nixpacks.toml
-# Configuración Híbrida Python + Java para Facturación SRI
-
-providers = ["python"]
+# Configuración para instalar librerías gráficas requeridas por WeasyPrint en Railway
 
 [phases.setup]
 nixPkgs = [
-    "jdk17_headless",      # Para firmar con sri.jar
-    "mariadb-connector-c", # Para mysqlclient
-    "libxml2",             # Para lxml
-    "libxslt",             # Para lxml
+    "python312",      # Aseguramos coincidencia con runtime definido
+    "gcc",            
     "zlib",
-    "tzdata"               # CRÍTICO: Para configurar la hora de Ecuador
+    "libxml2",
+    "libxslt",
+    "libffi",
+    "cairo",          # CRÍTICO: Gráficos Vectoriales
+    "pango",          # CRÍTICO: Renderizado de Texto
+    "gdk-pixbuf",     # CRÍTICO: Manejo de Imágenes
+    "gobject-introspection" # Puente entre C y Python
 ]
+
+[phases.install]
+cmds = ["python -m pip install -r requirements.txt"]
 
 [phases.build]
-# Comandos que se ejecutan al construir la imagen
-cmds = [
-    "python manage.py collectstatic --noinput"
-]
+cmds = ["python manage.py collectstatic --noinput"]
 
-[variables]
-PIP_PREFER_BINARY = "true"
-# Forzamos la hora de Ecuador desde la construcción
-TZ = "America/Guayaquil"
+[start]
+cmd = "gunicorn config.wsgi:application"

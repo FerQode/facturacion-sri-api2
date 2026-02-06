@@ -37,7 +37,13 @@ jobs:
         python-version: "3.12"
         cache: 'pip' # Cachea dependencias para que sea más rápido
 
-    # 4. Instalar Dependencias
+    # 4. Instalar Dependencias del Sistema (WeasyPrint)
+    - name: Install System Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev shared-mime-info
+
+    # 5. Instalar Dependencias Python
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
