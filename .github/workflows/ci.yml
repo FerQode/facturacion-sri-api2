@@ -10,7 +10,6 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     
-    # 1. Base de Datos Temporal para Pruebas
     services:
       mysql:
         image: mysql:8.0
@@ -26,45 +25,44 @@ jobs:
           --health-retries=3
 
     steps:
-    # 2. Obtener código
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # 3. Configurar Python
     - name: Set up Python 3.12
       uses: actions/setup-python@v5
       with:
         python-version: "3.12"
         cache: 'pip'
 
-    # 4. INSTALACIÓN DE LIBRERÍAS DEL SISTEMA (CRÍTICO)
-    # Agregamos: default-libmysqlclient-dev (MySQL) y pkg-config (Compilación)
-    # Mantenemos: libcairo2, libpango (WeasyPrint)
+    # 4. INSTALACIÓN DE TODAS LAS DEPENDENCIAS DEL SISTEMA (ROBUSTO)
+    # Incluye: MySQL, LXML (XML), Pillow (Imágenes), WeasyPrint (PDF)
     - name: Install System Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y default-libmysqlclient-dev pkg-config
-        sudo apt-get install -y libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev shared-mime-info
+        sudo apt-get install -y \
+          default-libmysqlclient-dev pkg-config \
+          libxml2-dev libxslt-dev \
+          libjpeg-dev zlib1g-dev \
+          libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev shared-mime-info
 
-    # 5. Instalar Dependencias Python
     - name: Install Dependencies
       run: |
-        python -m pip install --upgrade pip
+        python -m pip install --upgrade pip wheel setuptools
         pip install -r requirements.txt
     
-    # 6. Ejecutar Pruebas Automatizadas
     - name: Run Tests
       env:
-        # Variables de Base de Datos
         DATABASE_URL: mysql://root:root@127.0.0.1:3306/db_tesis
         DJANGO_SECRET_KEY: test-key-ci-pipeline-secure
         DEBUG: True
         
-        # --- VARIABLES DUMMY PARA QUE ARRANQUE EL SRI ---
-        # El test no enviará nada real, pero el servicio valida que existan.
-        SRI_FIRMA_BASE64: "MIIJuggBAzCCCanDummyContentForCIGithubActionsTesting==" 
+        # MOCKS SRI
+        SRI_FIRMA_BASE64: "MIIJuggBAzCCCanDummyContentForCIGithubActionsTesting=="
         SRI_FIRMA_PASS: "TestPass123"
         SRI_AMBIENTE: 1
+        # Usamos URLs dummy que no conecten para evitar Timeouts si no hay internet o si zeep falla
+        # Nota: Si el test realmente intenta conectar, fallará. 
+        # Idealmente el código debe mockear self.soap_client.
         SRI_URL_RECEPCION: "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline?wsdl"
         SRI_URL_AUTORIZACION: "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
         
