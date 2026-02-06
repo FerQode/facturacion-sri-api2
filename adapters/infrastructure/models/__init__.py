@@ -16,6 +16,7 @@ from .pago_model import PagoModel
 # ✅ AQUI ESTABA EL ERROR: Faltaba esta línea
 from .servicio_model import ServicioModel
 from .evento_models import EventoModel, AsistenciaModel # ✅ NUEVO FASE 2 
+from .sri_models import SRISecuencialModel # ✅ NUEVO FASE 3
 
 # 4. Actualizamos la lista __all__ para exportar todo limpiamente
 __all__ = [
@@ -31,4 +32,5 @@ __all__ = [
     'ServicioModel',
     'EventoModel', 
     'AsistenciaModel',
+    'SRISecuencialModel',
 ]
