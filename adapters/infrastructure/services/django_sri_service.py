@@ -25,16 +25,22 @@ from core.domain.socio import Socio
 
 logger = logging.getLogger(__name__)
 
+from adapters.infrastructure.repositories.django_sri_repository import DjangoSRISecuencialRepository
+
 class DjangoSRIService(ISRIService):
     """
     Implementación robusta del Servicio SRI.
     - Generación XML: Python (lxml)
     - Firma Digital: Java (sri.jar externo) -> Estabilidad garantizada.
     - Envío SOAP: Python (Zeep)
+    - Secuenciales: DB Transactional Shielding
     """
 
     def __init__(self):
         try:
+            # Inicializamos repositorio de secuencias
+            self.secuencial_repo = DjangoSRISecuencialRepository()
+            
             # Validación: Debe existir O la ruta física O el Base64
             has_path = hasattr(settings, 'SRI_FIRMA_PATH') and settings.SRI_FIRMA_PATH
             has_base64 = hasattr(settings, 'SRI_FIRMA_BASE64') and settings.SRI_FIRMA_BASE64
@@ -119,10 +125,9 @@ class DjangoSRIService(ISRIService):
     def _generar_xml_factura(self, factura: Factura, socio: Socio) -> tuple[str, str]:
         """Construye el XML v1.1.0 usando lxml"""
         try:
-            # LÓGICA DE SECUENCIAL (OFFSET CONFIGURABLE)
-            # Permite evitar duplicados en pruebas sumando un valor base al ID
-            secuencia_inicio = getattr(settings, 'SRI_SECUENCIA_INICIO', 0)
-            numero_secuencial = secuencia_inicio + int(factura.id)
+            # LÓGICA DE SECUENCIAL (ATÓMICA DB)
+            # Usamos el repositorio con bloqueo para garantizar unicidad
+            numero_secuencial = self.secuencial_repo.obtener_siguiente_secuencial('01')
             nro_factura_secuencial = str(numero_secuencial)
 
             if factura.sri_clave_acceso:
