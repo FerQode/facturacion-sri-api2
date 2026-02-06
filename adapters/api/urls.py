@@ -6,12 +6,10 @@ from rest_framework.routers import DefaultRouter
 # --- Importación de Vistas (Clean Architecture) ---
 from .views import (
     lectura_views,
-    factura_views, # Contiene: Generar, Masiva, Cobros, SRI
-    socio_views,
-    medidor_views,
-    barrio_views,
-    terreno_views,
     multa_views,
+    factura_views # Contiene: Generar, Masiva, Cobros, SRI, DescargarRide
+)
+from .views.factura_views import DescargarRideView
     servicio_agua_views, # ✅ AGREGADO: Importamos la vista del Servicio de Agua
     cobro_views,
     sri_views, # ✅ AGREGADO: Vista para sincronización SRI
@@ -104,7 +102,15 @@ urlpatterns = [
     path(
         'facturas/consultar/',
         factura_views.ConsultarAutorizacionAPIView.as_view(),
+        factura_views.ConsultarAutorizacionAPIView.as_view(),
         name='consultar-autorizacion-sri'
+    ),
+
+    # Descarga de RIDE (PDF)
+    path(
+        'facturas/<int:factura_id>/pdf/',
+        DescargarRideView.as_view(),
+        name='descargar-ride'
     ),
 
     # App Móvil (Historial del Socio)

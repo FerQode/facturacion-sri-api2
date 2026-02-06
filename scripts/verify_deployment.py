@@ -1,3 +1,4 @@
+# scripts/verify_deployment.py
 import requests
 import sys
 import json
