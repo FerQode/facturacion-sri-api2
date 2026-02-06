@@ -9,7 +9,7 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    
+
     services:
       mysql:
         image: mysql:8.0
@@ -34,37 +34,45 @@ jobs:
         python-version: "3.12"
         cache: 'pip'
 
-    # 4. INSTALACIÓN DE TODAS LAS DEPENDENCIAS DEL SISTEMA (ROBUSTO)
-    # Incluye: MySQL, LXML (XML), Pillow (Imágenes), WeasyPrint (PDF)
-    - name: Install System Dependencies
+    # --- PASO 1: HERRAMIENTAS DE COMPILACIÓN (CRÍTICO) ---
+    - name: Install Build Essentials
       run: |
         sudo apt-get update
-        sudo apt-get install -y \
-          default-libmysqlclient-dev pkg-config \
-          libxml2-dev libxslt-dev \
-          libjpeg-dev zlib1g-dev \
-          libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev shared-mime-info
+        sudo apt-get install -y build-essential python3-dev pkg-config
 
-    - name: Install Dependencies
+    # --- PASO 2: DEPENDENCIAS PARA MYSQL ---
+    - name: Install MySQL Dependencies
       run: |
-        python -m pip install --upgrade pip wheel setuptools
+        sudo apt-get install -y default-libmysqlclient-dev
+
+    # --- PASO 3: DEPENDENCIAS PARA WEASYPRINT y LXML ---
+    - name: Install WeasyPrint and LXML Dependencies
+      run: |
+        sudo apt-get install -y libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev shared-mime-info libxml2-dev libxslt-dev
+
+    # --- PASO 4: INSTALAR PAQUETES PYTHON ---
+    - name: Install Python Requirements
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
         pip install -r requirements.txt
-    
+
+    # --- PASO 5: PRUEBAS (SIN LINTING) ---
     - name: Run Tests
       env:
         DATABASE_URL: mysql://root:root@127.0.0.1:3306/db_tesis
-        DJANGO_SECRET_KEY: test-key-ci-pipeline-secure
+        DJANGO_SECRET_KEY: test-secret-key-12345
         DEBUG: True
-        
-        # MOCKS SRI
-        SRI_FIRMA_BASE64: "MIIJuggBAzCCCanDummyContentForCIGithubActionsTesting=="
-        SRI_FIRMA_PASS: "TestPass123"
+        # Mocks para SRI (Evita que el constructor falle)
+        SRI_FIRMA_BASE64: "dummy_base64_string_==" 
+        SRI_FIRMA_PASS: "dummy_pass"
         SRI_AMBIENTE: 1
-        # Usamos URLs dummy que no conecten para evitar Timeouts si no hay internet o si zeep falla
-        # Nota: Si el test realmente intenta conectar, fallará. 
-        # Idealmente el código debe mockear self.soap_client.
-        SRI_URL_RECEPCION: "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline?wsdl"
-        SRI_URL_AUTORIZACION: "https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl"
+        SRI_URL_RECEPCION: "https://mock.sri.gob.ec"
+        SRI_URL_AUTORIZACION: "https://mock.sri.gob.ec"
+        # Mock para Secuenciales (Para que el test no busque en DB si no existe)
+        SRI_SECUENCIA_INICIO: 600
+        SRI_SERIE_ESTABLECIMIENTO: "001"
+        SRI_SERIE_PUNTO_EMISION: "001"
+        SRI_EMISOR_RUC: "1722253331001" # Mock necesario
         
       run: |
         python manage.py test
