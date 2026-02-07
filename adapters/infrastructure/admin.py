@@ -1,10 +1,9 @@
 # adapters/infrastructure/admin.py
 from django.contrib import admin
-from core.domain.asistencia import EstadoAsistencia, EstadoJustificacion
 from simple_history.admin import SimpleHistoryAdmin
+from core.shared.enums import EstadoAsistencia, EstadoJustificacion, EstadoSolicitud, EstadoEvento, TipoRubro, EstadoCuentaPorCobrar
 
 # 1. Importamos los modelos
-# (Asegúrate de que TODOS existan en models/__init__.py, tal como lo actualizamos antes)
 from .models import (
     SocioModel,
     MedidorModel,
@@ -14,12 +13,20 @@ from .models import (
     FacturaModel,
     DetalleFacturaModel,
     MultaModel,
-    PagoModel,
+    PagoModel, # Cabecera
+    # DetallePagoModel, # No se exporta en __init__ aún, cuidado. Lo importamos de models.pago_model si es necesario, o actualizamos __init__
     ServicioModel,
     EventoModel,
     AsistenciaModel,
-    SRISecuencialModel
+    SRISecuencialModel,
+    CatalogoRubroModel,
+    CuentaPorCobrarModel,
+    OrdenTrabajoModel,
+    ProductoMaterial,
+    SolicitudJustificacionModel
 )
+# Hack: Importar el detalle directamente si no está en __init__
+from adapters.infrastructure.models.pago_model import DetallePagoModel
 
 @admin.register(BarrioModel)
 class BarrioAdmin(admin.ModelAdmin):
@@ -28,20 +35,23 @@ class BarrioAdmin(admin.ModelAdmin):
 
 @admin.register(SocioModel)
 class SocioAdmin(SimpleHistoryAdmin):
-    list_display = ('identificacion', 'apellidos', 'nombres', 'barrio', 'rol', 'esta_activo')
-    list_filter = ('rol', 'esta_activo', 'barrio')
+    list_display = ('identificacion', 'apellidos', 'nombres', 'barrio', 'modalidad_cobro', 'esta_activo')
+    list_filter = ('rol', 'esta_activo', 'barrio', 'modalidad_cobro')
     search_fields = ('identificacion', 'nombres', 'apellidos')
     ordering = ['apellidos'] 
 
     fieldsets = (
         ('Identificación', {
-            'fields': ('identificacion', 'nombres', 'apellidos')
+            'fields': ('identificacion', 'nombres', 'apellidos', 'tipo_identificacion')
         }),
         ('Contacto', {
-            'fields': ('email', 'telefono', 'barrio', 'direccion')
+            'fields': ('email', 'email_notificacion', 'telefono', 'barrio', 'direccion')
         }),
         ('Sistema', {
-            'fields': ('rol', 'esta_activo', 'usuario')
+            'fields': ('rol', 'esta_activo', 'modalidad_cobro', 'usuario')
+        }),
+        ('Social/Legal', {
+            'fields': ('es_tercera_edad', 'tiene_discapacidad', 'en_litigio')
         }),
     )
 
@@ -94,7 +104,7 @@ class MultaAdmin(SimpleHistoryAdmin):
     list_display = ('id', 'socio', 'motivo', 'valor', 'estado', 'fecha_registro')
     list_filter = ('estado', 'fecha_registro')
     search_fields = ('socio__nombres', 'socio__identificacion', 'motivo')
-    list_editable = ('estado',) # Útil para marcar PAGADA rápido en pruebas
+    list_editable = ('estado',)
 
 # --- ✅ SECCIÓN DE FACTURACIÓN Y PAGOS ---
 
@@ -103,39 +113,49 @@ class DetalleFacturaInline(admin.TabularInline):
     extra = 0
     readonly_fields = ('subtotal',)
 
-class PagoInline(admin.TabularInline):
-    """Permite ver los pagos (Efectivo/Transferencia) dentro de la factura"""
-    model = PagoModel
-    extra = 0
-    can_delete = False
-    readonly_fields = ('fecha_registro',)
+# class PagoInline(admin.TabularInline):
+#     model = PagoModel
+#     extra = 0
+#     can_delete = False
+#     readonly_fields = ('fecha_registro',)
+# YA NO USAMOS PAGO INLINE DENTRO DE FACTURA SI EL PAGO ES MAESTRO-DETALLE GLOBAL
+# OJO: Si el modelo PagoModel ya no tiene FK a Factura, no se puede poner Inline aquí.
 
 @admin.register(FacturaModel)
 class FacturaAdmin(SimpleHistoryAdmin):
-    list_display = ('id', 'get_socio', 'fecha_emision', 'total', 'estado', 'estado_sri')
-    list_filter = ('estado', 'estado_sri', 'fecha_emision')
-    search_fields = ('socio__identificacion', 'sri_clave_acceso') 
+    list_display = ('id', 'get_socio', 'fecha_emision', 'total', 'estado', 'es_fiscal', 'estado_sri')
+    list_filter = ('estado', 'es_fiscal', 'estado_sri', 'fecha_emision')
+    search_fields = ('socio__identificacion', 'clave_acceso_sri') 
     
-    # Mostramos Detalles y Pagos en la misma ficha
-    inlines = [DetalleFacturaInline, PagoInline]
+    inlines = [DetalleFacturaInline]
 
     def get_socio(self, obj):
-        # Ajusta según tu modelo, si socio es FK directa o via terreno
         if hasattr(obj, 'socio'):
             return f"{obj.socio.nombres} {obj.socio.apellidos}"
         return "N/A"
 
+# --- ✅ PAGO MAESTRO DETALLE ---
+
+class DetallePagoInline(admin.TabularInline):
+    model = DetallePagoModel
+    extra = 1
+    min_num = 1
+
 @admin.register(PagoModel)
 class PagoAdmin(SimpleHistoryAdmin):
-    list_display = ('id', 'factura', 'metodo', 'monto', 'referencia', 'fecha_registro')
-    list_filter = ('metodo',)
+    list_display = ('numero_comprobante_interno', 'socio', 'monto_total', 'fecha_registro', 'validado')
+    list_filter = ('fecha_registro', 'validado')
+    search_fields = ('numero_comprobante_interno', 'socio__identificacion', 'socio__apellidos')
+    autocomplete_fields = ['socio']
+    
+    inlines = [DetallePagoInline]
 
 # --- ✅ SECCIÓN DE SERVICIOS AGUA (NUEVO) ---
 @admin.register(ServicioModel)
 class ServicioAguaAdmin(admin.ModelAdmin):
-    list_display = ('id', 'get_socio_nombre', 'tipo', 'valor_tarifa', 'activo', 'fecha_instalacion')
+    list_display = ('id', 'get_socio_nombre', 'tipo', 'valor_tarifa', 'estado', 'fecha_instalacion')
 
-    list_filter = ('tipo', 'activo', 'fecha_instalacion')
+    list_filter = ('tipo', 'estado', 'fecha_instalacion')
     search_fields = ('socio__nombres', 'socio__apellidos', 'socio__identificacion')
     autocomplete_fields = ['socio', 'terreno']
 
@@ -149,26 +169,25 @@ class ServicioAguaAdmin(admin.ModelAdmin):
 def generar_asistencia_masiva(modeladmin, request, queryset):
     """
     Crea registros de Asistencia para TODOS los socios activos en el evento seleccionado.
-    Default: Estado PENDIENTE.
+    Default: Estado FALTA (para luego marcar ASISTIO).
     """
     for evento in queryset:
         socios_activos = SocioModel.objects.filter(esta_activo=True)
         creados = 0
         for socio in socios_activos:
-            # get_or_create evita duplicados si ya existen
             obj, created = AsistenciaModel.objects.get_or_create(
                 evento=evento,
                 socio=socio,
-                defaults={'estado': EstadoAsistencia.PENDIENTE.value}
+                defaults={'estado': EstadoAsistencia.FALTA.value} 
             )
             if created:
                 creados += 1
         modeladmin.message_user(request, f"✅ Se generaron {creados} boletas de asistencia para: {evento.nombre}")
 
-@admin.action(description="✅ Marcar como PRESENTE")
+@admin.action(description="✅ Marcar como ASISTIÓ")
 def marcar_presente(modeladmin, request, queryset):
-    updated = queryset.update(estado=EstadoAsistencia.PRESENTE.value)
-    modeladmin.message_user(request, f"{updated} socios marcados como PRESENTES.")
+    updated = queryset.update(estado=EstadoAsistencia.ASISTIO.value)
+    modeladmin.message_user(request, f"{updated} socios marcados como ASISTIÓ.")
 
 @admin.action(description="❌ Marcar como FALTA (Injustificada)")
 def marcar_falta(modeladmin, request, queryset):
@@ -184,10 +203,10 @@ class EventoAdmin(admin.ModelAdmin):
 
 @admin.register(AsistenciaModel)
 class AsistenciaAdmin(SimpleHistoryAdmin):
-    list_display = ('get_evento', 'get_socio', 'estado', 'estado_justificacion')
-    list_filter = ('evento', 'estado', 'estado_justificacion')
+    list_display = ('get_evento', 'get_socio', 'estado')
+    list_filter = ('evento', 'estado')
     search_fields = ('socio__nombres', 'socio__apellidos', 'evento__nombre')
-    list_editable = ('estado',) # ¡Permite marcar rápido desde la lista!
+    list_editable = ('estado',) 
     actions = [marcar_presente, marcar_falta]
     autocomplete_fields = ['socio', 'evento']
 
@@ -199,6 +218,12 @@ class AsistenciaAdmin(SimpleHistoryAdmin):
         return f"{obj.socio.apellidos} {obj.socio.nombres}"
     get_socio.short_description = "Socio"
 
+@admin.register(SolicitudJustificacionModel)
+class SolicitudJustificacionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'asistencia', 'motivo', 'estado', 'fecha_solicitud')
+    list_filter = ('estado', 'fecha_solicitud')
+    search_fields = ('asistencia__socio__nombres', 'motivo')
+
 # --- ✅ FASE 3: SECUENCIALES SRI (NUEVO) ---
 @admin.register(SRISecuencialModel)
 class SRISecuencialAdmin(admin.ModelAdmin):
@@ -206,3 +231,31 @@ class SRISecuencialAdmin(admin.ModelAdmin):
     list_filter = ('tipo_comprobante',)
     search_fields = ('tipo_comprobante',)
     readonly_fields = ('updated_at',)
+
+# --- ✅ NUEVOS MODELOS FASE 0 ---
+@admin.register(CatalogoRubroModel)
+class CatalogoRubroAdmin(SimpleHistoryAdmin):
+    list_display = ('nombre', 'tipo', 'valor_unitario', 'iva', 'activo')
+    list_filter = ('tipo', 'activo', 'iva')
+    search_fields = ('nombre',)
+
+@admin.register(OrdenTrabajoModel)
+class OrdenTrabajoAdmin(SimpleHistoryAdmin):
+    list_display = ('id', 'tipo', 'estado', 'servicio', 'fecha_generacion', 'operador_asignado')
+    list_filter = ('estado', 'tipo', 'fecha_generacion')
+    search_fields = ('servicio__socio__nombres', 'servicio__socio__apellidos')
+    autocomplete_fields = ['servicio', 'operador_asignado']
+
+@admin.register(ProductoMaterial)
+class ProductoMaterialAdmin(SimpleHistoryAdmin):
+    list_display = ('codigo', 'nombre', 'precio_unitario', 'stock_actual', 'activo')
+    list_filter = ('activo', 'graba_iva')
+    search_fields = ('nombre', 'codigo')
+    autocomplete_fields = ['rubro']
+
+@admin.register(CuentaPorCobrarModel)
+class CuentaPorCobrarAdmin(SimpleHistoryAdmin):
+    list_display = ('id', 'socio', 'rubro', 'saldo_pendiente', 'fecha_vencimiento', 'estado')
+    list_filter = ('estado', 'fecha_vencimiento', 'rubro')
+    search_fields = ('socio__nombres', 'rubro__nombre')
+    autocomplete_fields = ['socio', 'factura', 'rubro']

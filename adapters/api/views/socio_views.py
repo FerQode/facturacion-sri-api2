@@ -1,11 +1,12 @@
 # adapters/api/views/socio_views.py
-from django.db import transaction # <--- IMPORTANTE PARA INTEGRIDAD
+from django.db import transaction # IMPORTANTE PARA INTEGRIDAD
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.decorators import action # <--- Added Import
-from drf_yasg.utils import swagger_auto_schema # <--- IMPORTANTE PARA DOCUMENTACIÓN
+from rest_framework.decorators import action
+# ✅ CAMBIO CLAVE: Reemplazamos drf_yasg por drf_spectacular
+from drf_spectacular.utils import extend_schema, OpenApiParameter
 
 # Importamos los "traductores" de BBDD
 from adapters.infrastructure.repositories.django_socio_repository import DjangoSocioRepository
@@ -38,7 +39,11 @@ class SocioViewSet(viewsets.ViewSet):
     """
     permission_classes = [IsAuthenticated]
 
-    @swagger_auto_schema(responses={200: SocioSerializer(many=True)})
+    @extend_schema(
+        summary="Listar Socios",
+        description="Obtiene el listado paginado de todos los socios registrados.",
+        responses={200: SocioSerializer(many=True)}
+    )
     def list(self, request):
         """ GET /api/v1/socios/ """
         try:
@@ -60,7 +65,10 @@ class SocioViewSet(viewsets.ViewSet):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    @swagger_auto_schema(responses={200: SocioSerializer()})
+    @extend_schema(
+        summary="Obtener Socio",
+        responses={200: SocioSerializer()}
+    )
     def retrieve(self, request, pk=None):
         """ GET /api/v1/socios/<pk>/ """
         repo = DjangoSocioRepository()
@@ -72,7 +80,11 @@ class SocioViewSet(viewsets.ViewSet):
         except SocioNoEncontradoError as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
 
-    @swagger_auto_schema(request_body=CrearSocioSerializer, responses={201: SocioSerializer()})
+    @extend_schema(
+        summary="Crear Socio",
+        request=CrearSocioSerializer, # En spectacular se usa 'request', no 'request_body'
+        responses={201: SocioSerializer()}
+    )
     @transaction.atomic
     def create(self, request):
         """ POST /api/v1/socios/ """
@@ -102,7 +114,11 @@ class SocioViewSet(viewsets.ViewSet):
         """ PUT /api/v1/socios/<pk>/ (Redirige a PATCH) """
         return self.partial_update(request, pk)
 
-    @swagger_auto_schema(request_body=ActualizarSocioSerializer, responses={200: SocioSerializer()})
+    @extend_schema(
+        summary="Actualizar Socio",
+        request=ActualizarSocioSerializer,
+        responses={200: SocioSerializer()}
+    )
     def partial_update(self, request, pk=None):
         """ PATCH /api/v1/socios/<pk>/ """
         serializer = ActualizarSocioSerializer(data=request.data, partial=True)
@@ -123,6 +139,7 @@ class SocioViewSet(viewsets.ViewSet):
         except SocioNoEncontradoError as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
 
+    @extend_schema(summary="Eliminar Socio")
     def destroy(self, request, pk=None):
         """ DELETE /api/v1/socios/<pk>/ """
         socio_repo = DjangoSocioRepository()
@@ -137,7 +154,11 @@ class SocioViewSet(viewsets.ViewSet):
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
 
     @action(detail=True, methods=['get'], url_path='estado-cuenta')
-    @swagger_auto_schema(responses={200: EstadoCuentaSerializer()})
+    @extend_schema(
+        summary="Estado de Cuenta 360",
+        description="Retorna propiedades, deudas, multas e historial del socio.",
+        responses={200: EstadoCuentaSerializer()}
+    )
     def estado_cuenta(self, request, pk=None):
         """
         Retorna el Estado de Cuenta 360° (Propiedades, Deudas, Multas, Historial).

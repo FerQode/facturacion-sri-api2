@@ -2,7 +2,7 @@
 from django.db import models
 from simple_history.models import HistoricalRecords
 from django.contrib.auth.models import User
-from core.shared.enums import RolUsuario
+from core.shared.enums import RolUsuario, ModalidadCobro
 from .barrio_model import BarrioModel
 
 class SocioModel(models.Model):
@@ -21,9 +21,26 @@ class SocioModel(models.Model):
         default=TipoIdentificacion.CEDULA,
         verbose_name="Tipo de Identificación"
     )
+
+    # --- LÓGICA HÍBRIDA (MEDIDOR vs TARIFA FIJA) ---
+    modalidad_cobro = models.CharField(
+        max_length=20,
+        choices=[(m.value, m.name) for m in ModalidadCobro],
+        default=ModalidadCobro.MEDIDOR.value,
+        verbose_name="Modalidad de Cobro"
+    )
+    # -----------------------------------------------
+
+    # --- BANDERAS SOCIALES Y LEGALES ---
+    es_tercera_edad = models.BooleanField(default=False, verbose_name="Es Tercera Edad")
+    tiene_discapacidad = models.BooleanField(default=False, verbose_name="Tiene Discapacidad")
+    en_litigio = models.BooleanField(default=False, verbose_name="En Litigio (Suspende Multas)")
+    # -----------------------------------
+
     nombres = models.CharField(max_length=100)
     apellidos = models.CharField(max_length=100)
     email = models.EmailField(max_length=254, null=True, blank=True)
+    email_notificacion = models.EmailField(max_length=254, null=True, blank=True, verbose_name="Email para Facturación")
     telefono = models.CharField(max_length=20, null=True, blank=True)
     
     # --- CORRECCIÓN DE ESTANDARIZACIÓN ---

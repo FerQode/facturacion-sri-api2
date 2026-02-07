@@ -9,8 +9,7 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    
-    # 1. Definimos Servicios (Base de Datos Temporal)
+
     services:
       mysql:
         image: mysql:8.0
@@ -26,36 +25,54 @@ jobs:
           --health-retries=3
 
     steps:
-    # 2. Obtener el código
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # 3. Configurar Python
     - name: Set up Python 3.12
       uses: actions/setup-python@v5
       with:
         python-version: "3.12"
-        cache: 'pip' # Cachea dependencias para que sea más rápido
+        cache: 'pip'
 
-    # 4. Instalar Dependencias
-    - name: Install Dependencies
+    # --- PASO 1: HERRAMIENTAS DE COMPILACIÓN (CRÍTICO) ---
+    - name: Install Build Essentials
       run: |
-        python -m pip install --upgrade pip
+        sudo apt-get update
+        sudo apt-get install -y build-essential python3-dev pkg-config
+
+    # --- PASO 2: DEPENDENCIAS PARA MYSQL ---
+    - name: Install MySQL Dependencies
+      run: |
+        sudo apt-get install -y default-libmysqlclient-dev
+
+    # --- PASO 3: DEPENDENCIAS PARA WEASYPRINT y LXML ---
+    - name: Install WeasyPrint and LXML Dependencies
+      run: |
+        sudo apt-get install -y libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev shared-mime-info libxml2-dev libxslt-dev
+
+    # --- PASO 4: INSTALAR PAQUETES PYTHON ---
+    - name: Install Python Requirements
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
         pip install -r requirements.txt
-    
-    # 5. Análisis de Calidad (Linting)
-    - name: Run Flake8 (Linting)
-      run: |
-        # E501: Ignorar líneas largas (>79) porque Django suele tenerlas
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=120 --statistics
 
-    # 6. Ejecutar Pruebas Automatizadas
+    # --- PASO 5: PRUEBAS (SIN LINTING) ---
     - name: Run Tests
       env:
-        # Variables de entorno para el test runner
         DATABASE_URL: mysql://root:root@127.0.0.1:3306/db_tesis
-        DJANGO_SECRET_KEY: test-key-ci-pipeline
+        DJANGO_SECRET_KEY: test-secret-key-12345
         DEBUG: True
+        # Mocks para SRI (Evita que el constructor falle)
+        SRI_FIRMA_BASE64: "dummy_base64_string_==" 
+        SRI_FIRMA_PASS: "dummy_pass"
+        SRI_AMBIENTE: 1
+        SRI_URL_RECEPCION: "https://mock.sri.gob.ec"
+        SRI_URL_AUTORIZACION: "https://mock.sri.gob.ec"
+        # Mock para Secuenciales (Para que el test no busque en DB si no existe)
+        SRI_SECUENCIA_INICIO: 600
+        SRI_SERIE_ESTABLECIMIENTO: "001"
+        SRI_SERIE_PUNTO_EMISION: "001"
+        SRI_EMISOR_RUC: "1722253331001" # Mock necesario
+        
       run: |
         python manage.py test

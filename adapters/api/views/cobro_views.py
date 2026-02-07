@@ -3,7 +3,7 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from drf_yasg.utils import swagger_auto_schema
+from drf_spectacular.utils import extend_schema, OpenApiParameter
 from django.db import transaction
 
 # Imports del Dominio
@@ -36,7 +36,7 @@ class CobroViewSet(viewsets.ViewSet):
     # --------------------------------------------------------------------------
     # 1. COBRO EN VENTANILLA (Tesorero)
     # --------------------------------------------------------------------------
-    @swagger_auto_schema(request_body=RegistrarCobroSerializer)
+    @extend_schema(request=RegistrarCobroSerializer)
     @action(detail=False, methods=['post'], url_path='registrar')
     @transaction.atomic # ✅ Transacción controlada en el Entry Point
     def registrar_cobro(self, request):
@@ -75,7 +75,7 @@ class CobroViewSet(viewsets.ViewSet):
     # --------------------------------------------------------------------------
     # 2. SOCIO SUBE COMPROBANTE (Móvil)
     # --------------------------------------------------------------------------
-    @swagger_auto_schema(request_body=ReportarPagoSerializer)
+    @extend_schema(request=ReportarPagoSerializer)
     @action(detail=False, methods=['post'], url_path='subir_comprobante', parser_classes=[MultiPartParser, FormParser])
     def subir_comprobante(self, request):
         serializer = ReportarPagoSerializer(data=request.data)

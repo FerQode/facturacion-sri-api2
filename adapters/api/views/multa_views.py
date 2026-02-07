@@ -4,8 +4,8 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes, inline_serializer
+from rest_framework import serializers
 
 # Repositorio
 from adapters.infrastructure.repositories.django_multa_repository import DjangoMultaRepository
@@ -55,22 +55,21 @@ class MultaViewSet(viewsets.ViewSet):
         except Exception as e:
              return Response({"error": str(e)}, status=500)
 
-    @swagger_auto_schema(
-        method='patch',
-        operation_description="Permite ANULAR (borrado lógico) o RECTIFICAR (cambio de precio) una multa.",
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'accion': openapi.Schema(type=openapi.TYPE_STRING, description="Valores: 'ANULAR' o 'RECTIFICAR'"),
-                'motivo': openapi.Schema(type=openapi.TYPE_STRING, description="Razón obligatoria para auditoría"),
-                'nuevo_monto': openapi.Schema(type=openapi.TYPE_NUMBER, description="Requerido solo si es RECTIFICAR"),
-            },
-            required=['accion', 'motivo']
+    @extend_schema(
+        summary="Impugnar o Rectificar Multa",
+        description="Permite ANULAR (borrado lógico) o RECTIFICAR (cambio de precio) una multa.",
+        request=inline_serializer(
+            name='ImpugnacionMulta',
+            fields={
+                'accion': serializers.ChoiceField(choices=['ANULAR', 'RECTIFICAR'], help_text="Valores: 'ANULAR' o 'RECTIFICAR'"),
+                'motivo': serializers.CharField(help_text="Razón obligatoria para auditoría"),
+                'nuevo_monto': serializers.FloatField(required=False, help_text="Requerido solo si es RECTIFICAR"),
+            }
         ),
         responses={
-            200: "Multa actualizada correctamente",
-            400: "Error de validación (Falta motivo o monto)",
-            404: "Multa no encontrada"
+            200: OpenApiTypes.OBJECT,
+            400: OpenApiTypes.OBJECT,
+            404: OpenApiTypes.OBJECT
         }
     )
     @action(detail=True, methods=['patch'], url_path='impugnar')

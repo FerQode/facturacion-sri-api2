@@ -1,4 +1,4 @@
-#adapters.infrastructure.models.factura_model.py
+# adapters.infrastructure.models.factura_model.py
 from django.db import models
 from django.utils import timezone
 from decimal import Decimal
@@ -8,6 +8,7 @@ from .medidor_model import MedidorModel
 from .lectura_model import LecturaModel
 # ### NUEVO: Importamos el modelo de Servicio (Debes haber creado el archivo servicio_model.py primero)
 from .servicio_model import ServicioModel
+from .catalogo_models import CatalogoRubroModel
 from core.shared.enums import EstadoFactura
 
 
@@ -56,6 +57,12 @@ class FacturaModel(models.Model):
     sri_tipo_emision = models.PositiveIntegerField(choices=TIPO_EMISION_CHOICES, default=1)
 
     clave_acceso_sri = models.CharField(max_length=49, null=True, blank=True, unique=True, db_index=True)
+    contribuyente_rimpe = models.BooleanField(default=False, verbose_name="Contribuyente RÉGIMEN RIMPE")
+    
+    # --- CONTROL DE TIPO DE DOCUMENTO (Fiscal vs Recibo Interno) ---
+    es_fiscal = models.BooleanField(default=True, verbose_name="Es Documento Fiscal (SRI)",
+                                    help_text="True=Factura Electrónica, False=Recibo Interno/Proforma")
+    # --------------------------------------------------------------
 
     # Mantenemos tu corrección del estado_sri
     estado_sri = models.CharField(max_length=50, null=True, blank=True,
@@ -82,6 +89,10 @@ class FacturaModel(models.Model):
 # El detalle se mantiene igual, está perfecto.
 class DetalleFacturaModel(models.Model):
     factura = models.ForeignKey(FacturaModel, on_delete=models.CASCADE, related_name='detalles')
+    rubro = models.ForeignKey(CatalogoRubroModel, on_delete=models.SET_NULL, null=True, blank=True)
+    codigo_principal = models.CharField(max_length=25, null=True, blank=True, help_text="Código Principal/SKU")
+    codigo_auxiliar = models.CharField(max_length=25, null=True, blank=True, help_text="Código Auxiliar (Transporte)")
+    codigo_impuesto = models.CharField(max_length=4, default="0", help_text="Código IVA (0, 2, 4)")
     concepto = models.CharField(max_length=255)
     cantidad = models.DecimalField(max_digits=10, decimal_places=2)
     precio_unitario = models.DecimalField(max_digits=10, decimal_places=4)

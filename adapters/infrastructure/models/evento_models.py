@@ -1,25 +1,24 @@
 # adapters/infrastructure/models/evento_models.py
 from django.db import models
-from core.domain.evento import TipoEvento, EstadoEvento
-from core.domain.asistencia import EstadoJustificacion, EstadoAsistencia
+from simple_history.models import HistoricalRecords
+from core.shared.enums import TipoEvento, EstadoEvento, EstadoAsistencia, EstadoSolicitud, EstadoJustificacion
 from adapters.infrastructure.models.socio_model import SocioModel
 from adapters.infrastructure.models.factura_model import FacturaModel
-from simple_history.models import HistoricalRecords
 
 class EventoModel(models.Model):
     nombre = models.CharField(max_length=200)
-    tipo = models.CharField(max_length=20, choices=[(tag.value, tag.value) for tag in TipoEvento])
+    tipo = models.CharField(max_length=20, choices=[(tag.value, tag.name) for tag in TipoEvento])
     fecha = models.DateField()
     valor_multa = models.DecimalField(max_digits=10, decimal_places=2)
-    # Corrección 1: Estado Programada por defecto
-    estado = models.CharField(max_length=20, choices=[(tag.value, tag.value) for tag in EstadoEvento], default=EstadoEvento.PROGRAMADA.value)
+    # CORRECTO: PROGRAMADO (Masculino)
+    estado = models.CharField(max_length=20, choices=[(tag.value, tag.name) for tag in EstadoEvento], default=EstadoEvento.PROGRAMADO.value)
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        db_table = 'gobernanza_evento'
-        verbose_name = 'Evento'
+        db_table = 'gobernanza_eventos'
+        verbose_name = 'Evento (Minga/Asamblea)'
         verbose_name_plural = 'Eventos'
 
     def __str__(self):
@@ -29,14 +28,12 @@ class AsistenciaModel(models.Model):
     evento = models.ForeignKey(EventoModel, on_delete=models.CASCADE, related_name='asistencias')
     socio = models.ForeignKey(SocioModel, on_delete=models.CASCADE, related_name='asistencias')
     
-    # Corrección 2: Lógica de Estados en lugar de Booleano
+    # CORRECTO: Usamos choices de EstadoAsistencia
     estado = models.CharField(
         max_length=20, 
-        choices=[(tag.value, tag.value) for tag in EstadoAsistencia], 
-        default=EstadoAsistencia.PENDIENTE.value
+        choices=[(tag.value, tag.name) for tag in EstadoAsistencia], 
+        default='FALTA' 
     )
-    
-    estado_justificacion = models.CharField(max_length=20, choices=[(tag.value, tag.value) for tag in EstadoJustificacion], default=EstadoJustificacion.SIN_SOLICITUD.value)
     
     multa_factura = models.ForeignKey(FacturaModel, on_delete=models.SET_NULL, null=True, blank=True, related_name='multas_gobernanza')
     
@@ -45,13 +42,38 @@ class AsistenciaModel(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        db_table = 'gobernanza_asistencia'
+        db_table = 'gobernanza_asistencias'
         unique_together = ('evento', 'socio')
         verbose_name = 'Control de Asistencia'
         verbose_name_plural = 'Control de Asistencias'
 
     def requiere_multa(self):
-        """Helper para saber si este registro debe generar deuda"""
         return self.estado == EstadoAsistencia.FALTA.value
 
     history = HistoricalRecords()
+
+class SolicitudJustificacionModel(models.Model):
+    # Vinculamos a la falta
+    asistencia = models.OneToOneField(AsistenciaModel, on_delete=models.CASCADE, related_name='solicitud_justificacion')
+    
+    motivo = models.CharField(max_length=255)
+    descripcion = models.TextField()
+    archivo_evidencia = models.FileField(upload_to='justificaciones/%Y/%m/', null=True, blank=True)
+    
+    estado = models.CharField(
+        max_length=20, 
+        choices=[(tag.value, tag.name) for tag in EstadoSolicitud], 
+        default=EstadoSolicitud.PENDIENTE.value
+    )
+    
+    fecha_solicitud = models.DateTimeField(auto_now_add=True)
+    fecha_resolucion = models.DateTimeField(null=True, blank=True)
+    observacion_admin = models.TextField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'gobernanza_solicitudes'
+        verbose_name = 'Solicitud de Justificación'
+        verbose_name_plural = 'Solicitudes de Justificación'
+
+    def __str__(self):
+        return f"Solicitud {self.id} - {self.asistencia.socio}"

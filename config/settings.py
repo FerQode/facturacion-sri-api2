@@ -13,6 +13,37 @@ import dotenv  # pip install python-dotenv
 import dj_database_url  # pip install dj-database-url
 
 # ==============================================================================
+# 0. CONFIGURACIÓN COMPATIBILIDAD WINDOWS (WeasyPrint/GTK3) - DIAGNÓSTICO
+# ==============================================================================
+if os.name == 'nt':
+    # Lista de sospechosos habituales
+    posibles_rutas = [
+        r"C:\Program Files\GTK3-Runtime Win64\bin",
+        r"C:\Program Files (x86)\GTK3-Runtime Win64\bin",
+        r"C:\GTK3-Runtime Win64\bin", # A veces se instala en la raíz
+    ]
+    
+    gtk_encontrado = False
+    
+    for path in posibles_rutas:
+        if os.path.exists(path):
+            print(f"✅ DIAGNÓSTICO: GTK3 encontrado en: {path}")
+            try:
+                # 1. Método Moderno (Python 3.8+)
+                os.add_dll_directory(path)
+                # 2. Método Clásico (Hack para Windows tercos)
+                os.environ['PATH'] = path + os.pathsep + os.environ['PATH']
+                gtk_encontrado = True
+                break
+            except Exception as e:
+                print(f"⚠️ Alerta: Error cargando DLLs: {e}")
+    
+    if not gtk_encontrado:
+        print("❌ ERROR CRÍTICO: No se encontró la carpeta 'bin' de GTK3.")
+        print("   -> Buscado en: " + ", ".join(posibles_rutas))
+        print("   -> Por favor, reinstala GTK3 asegurando la ruta por defecto.")
+
+# ==============================================================================
 # 0. FUNCIONES DE UTILIDAD (Best Practice)
 # ==============================================================================
 def get_env_bool(var_name, default=False):
@@ -83,7 +114,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
-    'drf_yasg',
+    'drf_spectacular',
 
     # Local Apps (Arquitectura Limpia)
     'adapters.api.apps.ApiConfig',
@@ -340,16 +371,14 @@ LOGGING = {
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ==============================================================================
-# 15. CONFIGURACIÓN SWAGGER (DRF-YASG)
+# 15. CONFIGURACIÓN OPENAPI 3 (DRF-SPECTACULAR)
 # ==============================================================================
-SWAGGER_SETTINGS = {
-    'SECURITY_DEFINITIONS': {
-        'Bearer': {
-            'type': 'apiKey',
-            'name': 'Authorization',
-            'in': 'header'
-        }
-    },
-    'USE_SESSION_AUTH': False,
-    'JSON_EDITOR': True,
+REST_FRAMEWORK['DEFAULT_SCHEMA_CLASS'] = 'drf_spectacular.openapi.AutoSchema'
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'API ERP El Arbolito (Facturación SRI)',
+    'DESCRIPTION': 'API para gestión de socios, lecturas de agua y facturación electrónica con firma XAdES-BES.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True, # Para soportar JWT Bearer Auth correctamente
 }
