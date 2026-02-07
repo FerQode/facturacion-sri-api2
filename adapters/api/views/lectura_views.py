@@ -3,8 +3,7 @@ import dataclasses # ✅ Necesario para la inyección segura de usuario
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
+from drf_spectacular.utils import extend_schema, OpenApiParameter
 
 # Core
 from core.use_cases.registrar_lectura_uc import RegistrarLecturaUseCase
@@ -46,9 +45,10 @@ class LecturaViewSet(viewsets.ViewSet):
     # ======================================================
     # 1. REGISTRAR LECTURA (POST)
     # ======================================================
-    @swagger_auto_schema(
-        operation_description="Registra una nueva lectura de medidor.",
-        request_body=RegistrarLecturaSerializer, 
+    @extend_schema(
+        summary="Registrar Lectura",
+        description="Registra una nueva lectura de medidor.",
+        request=RegistrarLecturaSerializer, 
         responses={201: LecturaResponseSerializer}
     )
     def create(self, request):
@@ -93,11 +93,12 @@ class LecturaViewSet(viewsets.ViewSet):
     # ======================================================
     # 2. LISTAR HISTORIAL (GET)
     # ======================================================
-    @swagger_auto_schema(
-        operation_description="Obtiene el historial de lecturas registradas.",
-        manual_parameters=[
-            openapi.Parameter('medidor_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description="Filtrar por medidor"),
-            openapi.Parameter('limit', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description="Límite (default 12)"),
+    @extend_schema(
+        summary="Listar Historial de Lecturas",
+        description="Obtiene el historial de lecturas registradas.",
+        parameters=[
+            OpenApiParameter('medidor_id', description="Filtrar por medidor", required=False, type=int),
+            OpenApiParameter('limit', description="Límite (default 12)", required=False, type=int),
         ],
         responses={200: LecturaHistorialSerializer(many=True)}
     )

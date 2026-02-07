@@ -1,0 +1,2316 @@
+openapi: 3.0.3
+info:
+  title: API ERP El Arbolito (Facturación SRI)
+  version: 1.0.0
+  description: API para gestión de socios, lecturas de agua y facturación electrónica
+    con firma XAdES-BES.
+paths:
+  /api/v1/analytics/cartera-vencida/:
+    get:
+      operationId: api_v1_analytics_cartera_vencida_retrieve
+      description: Retorna la lista de socios con deuda, clasificada por antigüedad
+        (Corriente, 1-3 meses, >3 meses).
+      summary: Reporte de Cartera Vencida (Aging Report)
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/analytics/cierre-caja/:
+    get:
+      operationId: api_v1_analytics_cierre_caja_retrieve
+      description: Retorna el total recaudado hoy (o en rango de fechas), desglosado
+        por Efectivo/Transferencia.
+      summary: Cierre de Caja Diario
+      parameters:
+      - in: query
+        name: fecha_fin
+        schema:
+          type: string
+          format: date
+        description: YYYY-MM-DD
+      - in: query
+        name: fecha_inicio
+        schema:
+          type: string
+          format: date
+        description: YYYY-MM-DD
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/analytics/dashboard-kpis/:
+    get:
+      operationId: api_v1_analytics_dashboard_kpis_retrieve
+      description: Métricas rápidas para la pantalla de inicio del Tesorero.
+      summary: Dashboard KPIs (Ejecutivo)
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/barrios/:
+    get:
+      operationId: api_v1_barrios_list
+      description: ViewSet para la gestión de Barrios.
+      summary: Listar todos los barrios
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Barrio'
+          description: ''
+    post:
+      operationId: api_v1_barrios_create
+      description: ViewSet para la gestión de Barrios.
+      summary: Crear un nuevo barrio
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearBarrioRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CrearBarrioRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CrearBarrioRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Barrio'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+                description: Unspecified response body
+          description: ''
+  /api/v1/barrios/{id}/:
+    get:
+      operationId: api_v1_barrios_retrieve
+      description: ViewSet para la gestión de Barrios.
+      summary: Obtener un barrio por ID
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Barrio'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+                description: Unspecified response body
+          description: ''
+    put:
+      operationId: api_v1_barrios_update
+      description: ViewSet para la gestión de Barrios.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: api_v1_barrios_partial_update
+      description: ViewSet para la gestión de Barrios.
+      summary: Actualizar un barrio
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedActualizarBarrioRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedActualizarBarrioRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedActualizarBarrioRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Barrio'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+                description: Unspecified response body
+          description: ''
+    delete:
+      operationId: api_v1_barrios_destroy
+      description: ViewSet para la gestión de Barrios.
+      summary: Eliminar un barrio
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+                description: Unspecified response body
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+                description: Unspecified response body
+          description: ''
+  /api/v1/cobros/pendientes-validacion/:
+    get:
+      operationId: api_v1_cobros_pendientes_validacion_retrieve
+      description: Controlador de Recaudación.
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/cobros/registrar/:
+    post:
+      operationId: api_v1_cobros_registrar_create
+      description: Controlador de Recaudación.
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistrarCobroRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RegistrarCobroRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RegistrarCobroRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/cobros/subir_comprobante/:
+    post:
+      operationId: api_v1_cobros_subir_comprobante_create
+      description: Controlador de Recaudación.
+      tags:
+      - api
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ReportarPagoRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ReportarPagoRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/cobros/validar-transferencia/:
+    post:
+      operationId: api_v1_cobros_validar_transferencia_create
+      description: Controlador de Recaudación.
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/eventos/:
+    get:
+      operationId: api_v1_eventos_list
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Evento'
+          description: ''
+    post:
+      operationId: api_v1_eventos_create
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearEventoRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CrearEventoRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CrearEventoRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrearEventoRequest'
+          description: ''
+  /api/v1/eventos/{id}/:
+    get:
+      operationId: api_v1_eventos_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Evento.
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Evento'
+          description: ''
+    put:
+      operationId: api_v1_eventos_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Evento.
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventoRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EventoRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EventoRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Evento'
+          description: ''
+    patch:
+      operationId: api_v1_eventos_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Evento.
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedEventoRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedEventoRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedEventoRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Evento'
+          description: ''
+    delete:
+      operationId: api_v1_eventos_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Evento.
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/eventos/{id}/asistencia/:
+    get:
+      operationId: api_v1_eventos_asistencia_retrieve
+      description: Retorna la lista de asistencia del evento.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Evento.
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Evento'
+          description: ''
+  /api/v1/eventos/{id}/cerrar/:
+    post:
+      operationId: api_v1_eventos_cerrar_create
+      description: Cierra el evento y genera multas para los ausentes.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Evento.
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventoRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EventoRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EventoRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Evento'
+          description: ''
+  /api/v1/eventos/{id}/registrar_asistencia/:
+    put:
+      operationId: api_v1_eventos_registrar_asistencia_update
+      description: Actualiza los presentes. Recibe lista de IDs de socios que asistieron.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Evento.
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventoRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EventoRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EventoRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Evento'
+          description: ''
+  /api/v1/eventos/justificar/:
+    post:
+      operationId: api_v1_eventos_justificar_create
+      description: Procesa la justificación de una falta (Aprobar/Rechazar).
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventoRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EventoRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EventoRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Evento'
+          description: ''
+  /api/v1/facturas/{factura_id}/pdf/:
+    get:
+      operationId: api_v1_facturas_pdf_retrieve
+      description: Genera y descarga el PDF (RIDE) de una factura autorizada por el
+        SRI.
+      summary: Descargar RIDE (PDF)
+      parameters:
+      - in: path
+        name: factura_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: string
+                format: binary
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/lecturas/:
+    get:
+      operationId: api_v1_lecturas_list
+      description: Obtiene el historial de lecturas registradas.
+      summary: Listar Historial de Lecturas
+      parameters:
+      - in: query
+        name: limit
+        schema:
+          type: integer
+        description: Límite (default 12)
+      - in: query
+        name: medidor_id
+        schema:
+          type: integer
+        description: Filtrar por medidor
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LecturaHistorial'
+          description: ''
+    post:
+      operationId: api_v1_lecturas_create
+      description: Registra una nueva lectura de medidor.
+      summary: Registrar Lectura
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistrarLecturaRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RegistrarLecturaRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RegistrarLecturaRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LecturaResponse'
+          description: ''
+  /api/v1/medidores/:
+    get:
+      operationId: api_v1_medidores_list
+      description: Lista medidores. Admins ven todos, Socios solo los suyos.
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Medidor'
+          description: ''
+    post:
+      operationId: api_v1_medidores_create
+      description: Gestión de Medidores (Inventario).
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistrarMedidorRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RegistrarMedidorRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RegistrarMedidorRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Medidor'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+                description: Unspecified response body
+          description: ''
+  /api/v1/medidores/{id}/:
+    get:
+      operationId: api_v1_medidores_retrieve
+      description: Gestión de Medidores (Inventario).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Medidor'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+                description: Unspecified response body
+          description: ''
+    put:
+      operationId: api_v1_medidores_update
+      description: Gestión de Medidores (Inventario).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: api_v1_medidores_partial_update
+      description: Gestión de Medidores (Inventario).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedActualizarMedidorRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedActualizarMedidorRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedActualizarMedidorRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Medidor'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+                description: Unspecified response body
+          description: ''
+    delete:
+      operationId: api_v1_medidores_destroy
+      description: Gestión de Medidores (Inventario).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+                description: Unspecified response body
+          description: ''
+  /api/v1/medidores/mi-medidor/:
+    get:
+      operationId: api_v1_medidores_mi_medidor_retrieve
+      description: Endpoint exclusivo para que el socio logueado vea su medidor.
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/medidores/planilla-lecturas/:
+    get:
+      operationId: api_v1_medidores_planilla_lecturas_retrieve
+      description: Devuelve los medidores ACTIVOS filtrados por Barrio directamente
+        desde la BD.
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/multas/:
+    get:
+      operationId: api_v1_multas_retrieve
+      description: |-
+        GET /api/v1/multas/
+        Listar multas. Se puede filtrar por socio ?socio_id=X
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/multas/{id}/impugnar/:
+    patch:
+      operationId: api_v1_multas_impugnar_partial_update
+      description: Permite ANULAR (borrado lógico) o RECTIFICAR (cambio de precio)
+        una multa.
+      summary: Impugnar o Rectificar Multa
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedImpugnacionMultaRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedImpugnacionMultaRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedImpugnacionMultaRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/servicios-agua/:
+    get:
+      operationId: api_v1_servicios_agua_list
+      description: |-
+        CRUD completo para gestionar Servicios de Agua (Tarifa Fija).
+        Permite: Crear (POST), Listar (GET), Actualizar (PUT/PATCH) y Borrar (DELETE).
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServicioAgua'
+          description: ''
+    post:
+      operationId: api_v1_servicios_agua_create
+      description: |-
+        CRUD completo para gestionar Servicios de Agua (Tarifa Fija).
+        Permite: Crear (POST), Listar (GET), Actualizar (PUT/PATCH) y Borrar (DELETE).
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServicioAguaRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ServicioAguaRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ServicioAguaRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServicioAgua'
+          description: ''
+  /api/v1/servicios-agua/{id}/:
+    get:
+      operationId: api_v1_servicios_agua_retrieve
+      description: |-
+        CRUD completo para gestionar Servicios de Agua (Tarifa Fija).
+        Permite: Crear (POST), Listar (GET), Actualizar (PUT/PATCH) y Borrar (DELETE).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Servicio de Agua.
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServicioAgua'
+          description: ''
+    put:
+      operationId: api_v1_servicios_agua_update
+      description: |-
+        CRUD completo para gestionar Servicios de Agua (Tarifa Fija).
+        Permite: Crear (POST), Listar (GET), Actualizar (PUT/PATCH) y Borrar (DELETE).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Servicio de Agua.
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ServicioAguaRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ServicioAguaRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ServicioAguaRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServicioAgua'
+          description: ''
+    patch:
+      operationId: api_v1_servicios_agua_partial_update
+      description: |-
+        CRUD completo para gestionar Servicios de Agua (Tarifa Fija).
+        Permite: Crear (POST), Listar (GET), Actualizar (PUT/PATCH) y Borrar (DELETE).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Servicio de Agua.
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedServicioAguaRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedServicioAguaRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedServicioAguaRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServicioAgua'
+          description: ''
+    delete:
+      operationId: api_v1_servicios_agua_destroy
+      description: |-
+        CRUD completo para gestionar Servicios de Agua (Tarifa Fija).
+        Permite: Crear (POST), Listar (GET), Actualizar (PUT/PATCH) y Borrar (DELETE).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Un valor de entero único que identifique este Servicio de Agua.
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/socios/:
+    get:
+      operationId: api_v1_socios_list
+      description: Obtiene el listado paginado de todos los socios registrados.
+      summary: Listar Socios
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Socio'
+          description: ''
+    post:
+      operationId: api_v1_socios_create
+      description: POST /api/v1/socios/
+      summary: Crear Socio
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearSocioRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CrearSocioRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CrearSocioRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Socio'
+          description: ''
+  /api/v1/socios/{id}/:
+    get:
+      operationId: api_v1_socios_retrieve
+      description: GET /api/v1/socios/<pk>/
+      summary: Obtener Socio
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Socio'
+          description: ''
+    put:
+      operationId: api_v1_socios_update
+      description: PUT /api/v1/socios/<pk>/ (Redirige a PATCH)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: api_v1_socios_partial_update
+      description: PATCH /api/v1/socios/<pk>/
+      summary: Actualizar Socio
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedActualizarSocioRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedActualizarSocioRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedActualizarSocioRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Socio'
+          description: ''
+    delete:
+      operationId: api_v1_socios_destroy
+      description: DELETE /api/v1/socios/<pk>/
+      summary: Eliminar Socio
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/socios/{id}/estado-cuenta/:
+    get:
+      operationId: api_v1_socios_estado_cuenta_retrieve
+      description: Retorna el Estado de Cuenta 360° (Propiedades, Deudas, Multas,
+        Historial).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/sri/{id}/sincronizar/:
+    post:
+      operationId: api_v1_sri_sincronizar_create
+      description: |-
+        POST /api/v1/sri/{pk}/sincronizar/
+        Reintenta o consulta el estado de una factura en el SRI.
+        Útil para errores 'CLAVE DE ACCESO EN PROCESAMIENTO' o 'DEVUELTA'.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+  /api/v1/terrenos/:
+    get:
+      operationId: api_v1_terrenos_retrieve
+      description: Controlador para la gestión completa de Terrenos (CRUD + Procesos
+        de Negocio).
+      parameters:
+      - in: query
+        name: barrio_id
+        schema:
+          type: integer
+      - in: query
+        name: socio_id
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+    post:
+      operationId: api_v1_terrenos_create
+      description: Controlador para la gestión completa de Terrenos (CRUD + Procesos
+        de Negocio).
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TerrenoRegistroRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TerrenoRegistroRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TerrenoRegistroRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          description: No response body
+  /api/v1/terrenos/{id}/:
+    get:
+      operationId: api_v1_terrenos_retrieve_2
+      description: Controlador para la gestión completa de Terrenos (CRUD + Procesos
+        de Negocio).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+    patch:
+      operationId: api_v1_terrenos_partial_update
+      description: Controlador para la gestión completa de Terrenos (CRUD + Procesos
+        de Negocio).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedTerrenoActualizacionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedTerrenoActualizacionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedTerrenoActualizacionRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+    delete:
+      operationId: api_v1_terrenos_destroy
+      description: Controlador para la gestión completa de Terrenos (CRUD + Procesos
+        de Negocio).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/terrenos/{id}/reemplazar-medidor/:
+    post:
+      operationId: api_v1_terrenos_reemplazar_medidor_create
+      description: Controlador para la gestión completa de Terrenos (CRUD + Procesos
+        de Negocio).
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReemplazarMedidorRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ReemplazarMedidorRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ReemplazarMedidorRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/token/:
+    post:
+      operationId: api_v1_token_create
+      description: |-
+        Vista de login personalizada que devuelve tokens con Claims extra (rol, id).
+        Hereda de la vista estándar de SimpleJWT pero inyecta nuestro serializer.
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomTokenObtainPairRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CustomTokenObtainPairRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CustomTokenObtainPairRequest'
+        required: true
+      responses:
+        '200':
+          description: No response body
+  /api/v1/token/refresh/:
+    post:
+      operationId: api_v1_token_refresh_create
+      description: |-
+        Takes a refresh type JSON web token and returns an access type JSON web
+        token if the refresh token is valid.
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /api/v1/usuarios/me/:
+    get:
+      operationId: api_v1_usuarios_me_retrieve
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: No response body
+components:
+  schemas:
+    AccionEnum:
+      enum:
+      - ANULAR
+      - RECTIFICAR
+      type: string
+      description: |-
+        * `ANULAR` - ANULAR
+        * `RECTIFICAR` - RECTIFICAR
+    Barrio:
+      type: object
+      description: |-
+        Serializer de SALIDA.
+        Transforma la Entidad de Dominio 'Barrio' a JSON para enviarlo al frontend.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        nombre:
+          type: string
+          maxLength: 150
+        descripcion:
+          type: string
+          nullable: true
+        activo:
+          type: boolean
+      required:
+      - activo
+      - id
+      - nombre
+    CrearBarrioRequest:
+      type: object
+      description: |-
+        Serializer de ENTRADA para crear un barrio.
+        Validamos tipos de datos básicos.
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 150
+        descripcion:
+          type: string
+          nullable: true
+        activo:
+          type: boolean
+          default: true
+      required:
+      - nombre
+    CrearEventoRequest:
+      type: object
+      properties:
+        nombre:
+          type: string
+          maxLength: 200
+        tipo:
+          $ref: '#/components/schemas/TipoBa5Enum'
+        fecha:
+          type: string
+          format: date
+        valor_multa:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        seleccion_socios:
+          $ref: '#/components/schemas/SeleccionSociosEnum'
+        barrio_id:
+          type: integer
+          nullable: true
+        lista_socios_ids:
+          type: array
+          items:
+            type: integer
+          nullable: true
+      required:
+      - fecha
+      - nombre
+      - seleccion_socios
+      - tipo
+      - valor_multa
+    CrearEventoRequestRequest:
+      type: object
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 200
+        tipo:
+          $ref: '#/components/schemas/TipoBa5Enum'
+        fecha:
+          type: string
+          format: date
+        valor_multa:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        seleccion_socios:
+          $ref: '#/components/schemas/SeleccionSociosEnum'
+        barrio_id:
+          type: integer
+          nullable: true
+        lista_socios_ids:
+          type: array
+          items:
+            type: integer
+          nullable: true
+      required:
+      - fecha
+      - nombre
+      - seleccion_socios
+      - tipo
+      - valor_multa
+    CrearSocioRequest:
+      type: object
+      description: |-
+        Serializer de ENTRADA (Creación).
+        Valida que los datos sean correctos antes de pasar al Caso de Uso.
+      properties:
+        identificacion:
+          type: string
+          minLength: 1
+          maxLength: 13
+        tipo_identificacion:
+          allOf:
+          - $ref: '#/components/schemas/TipoIdentificacionEnum'
+          default: C
+        nombres:
+          type: string
+          minLength: 1
+          maxLength: 100
+        apellidos:
+          type: string
+          minLength: 1
+          maxLength: 100
+        barrio_id:
+          type: integer
+        direccion:
+          type: string
+          minLength: 1
+          maxLength: 200
+        rol:
+          $ref: '#/components/schemas/RolEnum'
+        email:
+          type: string
+          format: email
+        telefono:
+          type: string
+          maxLength: 20
+        username:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          minLength: 1
+      required:
+      - apellidos
+      - barrio_id
+      - direccion
+      - identificacion
+      - nombres
+      - rol
+    CustomTokenObtainPairRequest:
+      type: object
+      description: |-
+        Personaliza el token JWT para incluir información extra del usuario (Claims).
+        Adaptado para devolver nombres reales del Socio si existen.
+      properties:
+        username:
+          type: string
+          writeOnly: true
+          minLength: 1
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - password
+      - username
+    DetallePagoRequest:
+      type: object
+      description: 'Estructura de un abono individual (ej: $5.00 en Efectivo).'
+      properties:
+        metodo:
+          $ref: '#/components/schemas/MetodoEnum'
+        monto:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        referencia:
+          type: string
+          description: Número de comprobante (Obligatorio para Transferencia)
+        observacion:
+          type: string
+      required:
+      - metodo
+      - monto
+    Evento:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        nombre:
+          type: string
+          maxLength: 200
+        tipo:
+          $ref: '#/components/schemas/TipoBa5Enum'
+        fecha:
+          type: string
+          format: date
+        valor_multa:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        estado:
+          $ref: '#/components/schemas/EventoEstadoEnum'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - fecha
+      - id
+      - nombre
+      - tipo
+      - updated_at
+      - valor_multa
+    EventoEstadoEnum:
+      enum:
+      - PROGRAMADA
+      - BORRADOR
+      - FINALIZADO
+      type: string
+      description: |-
+        * `PROGRAMADA` - PROGRAMADA
+        * `BORRADOR` - BORRADOR
+        * `FINALIZADO` - FINALIZADO
+    EventoRequest:
+      type: object
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 200
+        tipo:
+          $ref: '#/components/schemas/TipoBa5Enum'
+        fecha:
+          type: string
+          format: date
+        valor_multa:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        estado:
+          $ref: '#/components/schemas/EventoEstadoEnum'
+      required:
+      - fecha
+      - nombre
+      - tipo
+      - valor_multa
+    LecturaHistorial:
+      type: object
+      description: Serializer 'Aplanado' (Flattened) optimizado para Tablas de Historial
+        en Angular.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        fecha:
+          type: string
+          format: date
+        medidor_codigo:
+          type: string
+          default: S/N
+        socio_nombre:
+          type: string
+          readOnly: true
+        lectura_anterior:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        lectura_actual:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        consumo:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        estado:
+          type: string
+          readOnly: true
+      required:
+      - consumo
+      - estado
+      - fecha
+      - id
+      - lectura_actual
+      - lectura_anterior
+      - socio_nombre
+    LecturaResponse:
+      type: object
+      description: Respuesta simple al crear una lectura.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        medidor_id:
+          type: integer
+        fecha:
+          type: string
+          format: date
+          title: Fecha de Toma
+        valor:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          title: Valor Lectura (m3)
+        lectura_anterior:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          readOnly: true
+        consumo_del_mes:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          readOnly: true
+        observacion:
+          type: string
+          nullable: true
+        esta_facturada:
+          type: boolean
+      required:
+      - consumo_del_mes
+      - fecha
+      - id
+      - lectura_anterior
+      - medidor_id
+      - valor
+    Medidor:
+      type: object
+      description: |-
+        Serializer HÍBRIDO: Funciona con DTOs (del Core) y con Modelos (del ORM).
+        Enriquece la respuesta con datos del Barrio, Socio y la Última Lectura registrada.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        terreno_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        codigo:
+          type: string
+          title: Código/Serial
+          maxLength: 50
+        marca:
+          type: string
+          nullable: true
+          maxLength: 50
+        lectura_inicial:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        lectura_anterior:
+          type: string
+          readOnly: true
+        estado:
+          $ref: '#/components/schemas/MedidorEstadoEnum'
+        observacion:
+          type: string
+          nullable: true
+        fecha_instalacion:
+          type: string
+          format: date
+          readOnly: true
+        nombre_barrio:
+          type: string
+          readOnly: true
+        nombre_socio:
+          type: string
+          readOnly: true
+        direccion_terreno:
+          type: string
+          readOnly: true
+      required:
+      - codigo
+      - direccion_terreno
+      - fecha_instalacion
+      - id
+      - lectura_anterior
+      - nombre_barrio
+      - nombre_socio
+      - terreno_id
+    MedidorEstadoEnum:
+      enum:
+      - ACTIVO
+      - INACTIVO
+      - DANADO
+      - ROBADO
+      - MANTENIMIENTO
+      type: string
+      description: |-
+        * `ACTIVO` - Activo
+        * `INACTIVO` - Inactivo/Suspendido
+        * `DANADO` - Dañado
+        * `ROBADO` - Robado
+        * `MANTENIMIENTO` - En Mantenimiento
+    MetodoEnum:
+      enum:
+      - EFECTIVO
+      - TRANSFERENCIA
+      type: string
+      description: |-
+        * `EFECTIVO` - EFECTIVO
+        * `TRANSFERENCIA` - TRANSFERENCIA
+    PatchedActualizarBarrioRequest:
+      type: object
+      description: |-
+        Serializer de ENTRADA para actualizar.
+        Todos los campos son opcionales para permitir actualizaciones parciales (PATCH).
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 150
+        descripcion:
+          type: string
+          nullable: true
+        activo:
+          type: boolean
+    PatchedActualizarMedidorRequest:
+      type: object
+      description: Serializer de ENTRADA para correcciones (PATCH).
+      properties:
+        codigo:
+          type: string
+          minLength: 1
+          maxLength: 50
+        marca:
+          type: string
+          minLength: 1
+          maxLength: 50
+        observacion:
+          type: string
+    PatchedActualizarSocioRequest:
+      type: object
+      description: |-
+        Serializer de ENTRADA (Actualización Parcial - PATCH).
+        Todos los campos son opcionales.
+      properties:
+        nombres:
+          type: string
+          minLength: 1
+          maxLength: 100
+        apellidos:
+          type: string
+          minLength: 1
+          maxLength: 100
+        barrio_id:
+          type: integer
+        direccion:
+          type: string
+          minLength: 1
+          maxLength: 200
+        rol:
+          $ref: '#/components/schemas/RolEnum'
+        email:
+          type: string
+          format: email
+        telefono:
+          type: string
+          maxLength: 20
+        esta_activo:
+          type: boolean
+    PatchedEventoRequest:
+      type: object
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 200
+        tipo:
+          $ref: '#/components/schemas/TipoBa5Enum'
+        fecha:
+          type: string
+          format: date
+        valor_multa:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        estado:
+          $ref: '#/components/schemas/EventoEstadoEnum'
+    PatchedImpugnacionMultaRequest:
+      type: object
+      properties:
+        accion:
+          allOf:
+          - $ref: '#/components/schemas/AccionEnum'
+          description: |-
+            Valores: 'ANULAR' o 'RECTIFICAR'
+
+            * `ANULAR` - ANULAR
+            * `RECTIFICAR` - RECTIFICAR
+        motivo:
+          type: string
+          minLength: 1
+          description: Razón obligatoria para auditoría
+        nuevo_monto:
+          type: number
+          format: double
+          description: Requerido solo si es RECTIFICAR
+    PatchedServicioAguaRequest:
+      type: object
+      properties:
+        tipo:
+          $ref: '#/components/schemas/ServicioAguaTipoEnum'
+        valor_tarifa:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          description: Costo de la Tarifa Básica (o Fija)
+        tarifa_basica_m3:
+          type: integer
+          maximum: 4294967295
+          minimum: 0
+          format: int64
+          description: 'Metros cúbicos incluidos en la base (Ej: 15)'
+        tarifa_excedente_precio:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          description: 'Costo por cada m³ adicional (Ej: 0.25)'
+        activo:
+          type: boolean
+        socio:
+          type: integer
+        terreno:
+          type: integer
+    PatchedTerrenoActualizacionRequest:
+      type: object
+      description: Serializer específico para PATCH/PUT.
+      properties:
+        direccion:
+          type: string
+          minLength: 1
+          maxLength: 200
+        barrio_id:
+          type: integer
+          description: ID del nuevo barrio si se mudó
+        es_cometida_activa:
+          type: boolean
+    ReemplazarMedidorRequest:
+      type: object
+      properties:
+        lectura_final_viejo:
+          type: number
+          format: double
+        motivo_cambio:
+          type: string
+          minLength: 1
+        codigo_nuevo:
+          type: string
+          minLength: 1
+        marca_nueva:
+          type: string
+          minLength: 1
+        lectura_inicial_nuevo:
+          type: number
+          format: double
+          default: 0.0
+      required:
+      - codigo_nuevo
+      - lectura_final_viejo
+      - marca_nueva
+      - motivo_cambio
+    RegistrarCobroRequest:
+      type: object
+      description: Valida la recepción de pagos mixtos para una factura.
+      properties:
+        factura_id:
+          type: integer
+        pagos:
+          type: array
+          items:
+            $ref: '#/components/schemas/DetallePagoRequest'
+      required:
+      - factura_id
+      - pagos
+    RegistrarLecturaRequest:
+      type: object
+      description: Valida el JSON que envía Angular para registrar una lectura.
+      properties:
+        medidor_id:
+          type: integer
+        lectura_actual:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        fecha_lectura:
+          type: string
+          format: date
+        observacion:
+          type: string
+          nullable: true
+      required:
+      - fecha_lectura
+      - lectura_actual
+      - medidor_id
+    RegistrarMedidorRequest:
+      type: object
+      description: Serializer de ENTRADA (Input) para crear un medidor.
+      properties:
+        terreno_id:
+          type: integer
+          description: Terreno donde se instalará
+        codigo:
+          type: string
+          minLength: 1
+          maxLength: 50
+        marca:
+          type: string
+          maxLength: 50
+        lectura_inicial:
+          type: number
+          format: double
+          default: 0.0
+        observacion:
+          type: string
+      required:
+      - codigo
+      - terreno_id
+    ReportarPagoRequest:
+      type: object
+      properties:
+        factura_id:
+          type: integer
+        monto:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        referencia:
+          type: string
+          minLength: 1
+          description: Número de comprobante del banco
+        comprobante:
+          type: string
+          format: binary
+          description: Foto o captura del pago
+      required:
+      - comprobante
+      - factura_id
+      - monto
+      - referencia
+    RolEnum:
+      enum:
+      - ADMINISTRADOR
+      - TESORERO
+      - OPERADOR
+      - SOCIO
+      type: string
+      description: |-
+        * `ADMINISTRADOR` - ADMINISTRADOR
+        * `TESORERO` - TESORERO
+        * `OPERADOR` - OPERADOR
+        * `SOCIO` - SOCIO
+    SeleccionSociosEnum:
+      enum:
+      - TODOS
+      - BARRIO
+      - MANUAL
+      type: string
+      description: |-
+        * `TODOS` - TODOS
+        * `BARRIO` - BARRIO
+        * `MANUAL` - MANUAL
+    ServicioAgua:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        tipo:
+          $ref: '#/components/schemas/ServicioAguaTipoEnum'
+        valor_tarifa:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          description: Costo de la Tarifa Básica (o Fija)
+        tarifa_basica_m3:
+          type: integer
+          maximum: 4294967295
+          minimum: 0
+          format: int64
+          description: 'Metros cúbicos incluidos en la base (Ej: 15)'
+        tarifa_excedente_precio:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          description: 'Costo por cada m³ adicional (Ej: 0.25)'
+        fecha_instalacion:
+          type: string
+          format: date
+          readOnly: true
+        activo:
+          type: boolean
+        socio:
+          type: integer
+        terreno:
+          type: integer
+      required:
+      - fecha_instalacion
+      - id
+      - socio
+      - terreno
+    ServicioAguaRequest:
+      type: object
+      properties:
+        tipo:
+          $ref: '#/components/schemas/ServicioAguaTipoEnum'
+        valor_tarifa:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          description: Costo de la Tarifa Básica (o Fija)
+        tarifa_basica_m3:
+          type: integer
+          maximum: 4294967295
+          minimum: 0
+          format: int64
+          description: 'Metros cúbicos incluidos en la base (Ej: 15)'
+        tarifa_excedente_precio:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          description: 'Costo por cada m³ adicional (Ej: 0.25)'
+        activo:
+          type: boolean
+        socio:
+          type: integer
+        terreno:
+          type: integer
+      required:
+      - socio
+      - terreno
+    ServicioAguaTipoEnum:
+      enum:
+      - MEDIDO
+      - FIJO
+      type: string
+      description: |-
+        * `MEDIDO` - Medido (Con Medidor)
+        * `FIJO` - Tarifa Fija (Sin Medidor)
+    Socio:
+      type: object
+      description: |-
+        Serializer de SALIDA (Lectura).
+        Muestra los datos del Socio tal como vienen del DTO.
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        identificacion:
+          type: string
+          maxLength: 13
+        tipo_identificacion:
+          type: string
+          maxLength: 1
+        nombres:
+          type: string
+          maxLength: 100
+        apellidos:
+          type: string
+          maxLength: 100
+        barrio:
+          type: integer
+          nullable: true
+        direccion:
+          type: string
+          nullable: true
+          maxLength: 200
+        rol:
+          $ref: '#/components/schemas/RolEnum'
+        email:
+          type: string
+          format: email
+        telefono:
+          type: string
+          maxLength: 20
+        esta_activo:
+          type: boolean
+      required:
+      - apellidos
+      - barrio
+      - esta_activo
+      - id
+      - identificacion
+      - nombres
+      - rol
+      - tipo_identificacion
+    TerrenoRegistroRequest:
+      type: object
+      description: |-
+        Serializer de Entrada: Valida los datos crudos que vienen del Frontend
+        antes de pasarlos al Caso de Uso.
+      properties:
+        socio_id:
+          type: integer
+          description: ID del socio dueño
+        barrio_id:
+          type: integer
+          description: ID del barrio de ubicación
+        direccion:
+          type: string
+          minLength: 1
+          maxLength: 200
+        tiene_medidor:
+          type: boolean
+          default: false
+        codigo_medidor:
+          type: string
+          nullable: true
+        marca_medidor:
+          type: string
+          nullable: true
+        lectura_inicial:
+          type: number
+          format: double
+          default: 0.0
+        observacion:
+          type: string
+          nullable: true
+      required:
+      - barrio_id
+      - direccion
+      - socio_id
+    TipoBa5Enum:
+      enum:
+      - MINGA
+      - SESION
+      - APORTE
+      type: string
+      description: |-
+        * `MINGA` - MINGA
+        * `SESION` - SESION
+        * `APORTE` - APORTE
+    TipoIdentificacionEnum:
+      enum:
+      - C
+      - R
+      - P
+      type: string
+      description: |-
+        * `C` - C
+        * `R` - R
+        * `P` - P
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+      required:
+      - access
+      - refresh
+    TokenRefreshRequest:
+      type: object
+      properties:
+        refresh:
+          type: string
+          minLength: 1
+      required:
+      - refresh
+  securitySchemes:
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

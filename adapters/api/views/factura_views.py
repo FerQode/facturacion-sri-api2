@@ -5,11 +5,10 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
+from drf_spectacular.utils import extend_schema, OpenApiTypes
 
 # Dominios y Servicios
-from core.domain.factura import Factura
 from adapters.infrastructure.repositories.django_factura_repository import DjangoFacturaRepository
-from adapters.infrastructure.repositories.django_socio_repository import DjangoSocioRepository
 from adapters.infrastructure.services.pdf_service import DjangoPDFService
 from adapters.infrastructure.models import FacturaModel
 
@@ -20,13 +19,20 @@ class DescargarRideView(APIView):
     """
     permission_classes = [IsAuthenticated] # Seguridad primero
 
+    @extend_schema(
+        summary="Descargar RIDE (PDF)",
+        description="Genera y descarga el PDF (RIDE) de una factura autorizada por el SRI.",
+        responses={
+            200: OpenApiTypes.BINARY,
+            400: OpenApiTypes.OBJECT,
+            404: OpenApiTypes.OBJECT
+        }
+    )
     def get(self, request, factura_id):
         try:
             # 1. Recuperar Entidades (Usando Repositorios, no ORM directo en la vista)
             # Nota: Para reportes visuales complejos como PDF, es aceptable leer del Modelo de Lectura (ORM)
-            # si el Modelo de Dominio no tiene los campos de presentación necesarios,
-            # pero el Servicio de PDF espera entidades de Dominio o compatibles.
-            # En este caso FacturaModel es compatible con el Dataclass Factura en estructura básica.
+            # si el Modelo de Dominio no tiene los campos de presentación necesarios.
             
             factura_orm = FacturaModel.objects.select_related('socio', 'lectura').get(id=factura_id)
             

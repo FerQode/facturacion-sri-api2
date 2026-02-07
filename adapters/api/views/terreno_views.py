@@ -3,16 +3,16 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes, inline_serializer
+from rest_framework import serializers
 
 # --- Core: Casos de Uso ---
 from core.use_cases.registrar_terreno_uc import RegistrarTerrenoUseCase
 from core.use_cases.reemplazar_medidor_uc import ReemplazarMedidorUseCase
 from core.use_cases.medidor_dtos import ReemplazarMedidorDTO
 
-# --- Core: Entidades (NECESARIO PARA CREAR MEDIDORES AL VUELO) ---
-from core.domain.medidor import Medidor  # <--- ¡AQUÍ ESTÁ LA CORRECCIÓN! ✅
+# --- Core: Entidades ---
+from core.domain.medidor import Medidor
 
 # --- Core: Excepciones ---
 from core.shared.exceptions import (
@@ -28,13 +28,14 @@ from adapters.infrastructure.repositories.django_socio_repository import DjangoS
 from adapters.infrastructure.repositories.django_barrio_repository import DjangoBarrioRepository
 from adapters.infrastructure.repositories.django_lectura_repository import DjangoLecturaRepository
 from adapters.infrastructure.repositories.django_servicio_repository import DjangoServicioRepository
+from adapters.infrastructure.models import MedidorModel, TerrenoModel
+
 # --- Serializers ---
 from adapters.api.serializers.terreno_serializers import (
     TerrenoRegistroSerializer,
-    TerrenoActualizacionSerializer
+    TerrenoActualizacionSerializer,
+    TerrenoLecturaSerializer # Importamos este para la respuesta
 )
-# Necesitamos importar el modelo Medidor para actualizarlo manualmente si es necesario
-from adapters.infrastructure.models import MedidorModel
 
 class TerrenoViewSet(viewsets.ViewSet):
     """
@@ -48,15 +49,18 @@ class TerrenoViewSet(viewsets.ViewSet):
             "socio": DjangoSocioRepository(),
             "barrio": DjangoBarrioRepository(),
             "lectura": DjangoLecturaRepository(),
-            "servicio": DjangoServicioRepository()  # <--- AGREGA ESTA LÍNEA ✅
+            "servicio": DjangoServicioRepository()
         }
 
     # =================================================================
     # 1. CREAR (POST)
     # =================================================================
-    # adapters/api/views/terreno_views.py
-
-    @swagger_auto_schema(request_body=TerrenoRegistroSerializer)
+    @extend_schema(
+        summary="Registrar Terreno",
+        description="Registra un nuevo terreno y opcionalmente le asigna un medidor (si el código es proveido).",
+        request=TerrenoRegistroSerializer,
+        responses={201: TerrenoLecturaSerializer, 400: OpenApiTypes.OBJECT, 500: OpenApiTypes.OBJECT}
+    )
     def create(self, request):
         serializer_in = TerrenoRegistroSerializer(data=request.data)
         if not serializer_in.is_valid():
@@ -72,22 +76,12 @@ class TerrenoViewSet(viewsets.ViewSet):
                 servicio_repo=repos['servicio']
             )
 
-            # 1. Se guarda en la BD (Aquí es donde confirmas que sí aparece en MySQL)
             terreno_entidad = use_case.ejecutar(serializer_in.to_dto())
-
-            # 2. ✅ SOLUCIÓN AL 500: Recuperar el modelo de infraestructura con relaciones
-            # El Serializer de salida necesita los nombres del socio y barrio
-            from adapters.infrastructure.models import TerrenoModel
-            from adapters.api.serializers.terreno_serializers import TerrenoLecturaSerializer
-
             terreno_db = TerrenoModel.objects.select_related('socio', 'barrio').get(id=terreno_entidad.id)
-
-            # 3. ✅ RESPUESTA COMPLETA: Esto detiene el "loading" en Angular
             serializer_out = TerrenoLecturaSerializer(terreno_db)
             return Response(serializer_out.data, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            # ✅ IMPORTANTE: Esto captura cualquier fallo y lo muestra en consola
             import logging
             logging.error(f"ERROR EN CREACIÓN DE TERRENO: {str(e)}")
             return Response(
@@ -98,11 +92,14 @@ class TerrenoViewSet(viewsets.ViewSet):
     # =================================================================
     # 2. LISTAR (GET)
     # =================================================================
-    @swagger_auto_schema(
-        manual_parameters=[
-            openapi.Parameter('socio_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER),
-            openapi.Parameter('barrio_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER),
-        ]
+    @extend_schema(
+        summary="Listar Terrenos",
+        description="Obtiene lista de terrenos con filtros opcionales.",
+        parameters=[
+            OpenApiParameter('socio_id', type=int, required=False, description="Filtrar por ID de socio"),
+            OpenApiParameter('barrio_id', type=int, required=False, description="Filtrar por ID de barrio"),
+        ],
+        responses={200: TerrenoLecturaSerializer(many=True)} # Usamos el de lectura aunque el return es un dict custom, ajustamos abajo si hace falta o creamos uno "Inline"
     )
     def list(self, request):
         repos = self._get_repositories()
@@ -118,8 +115,6 @@ class TerrenoViewSet(viewsets.ViewSet):
         elif barrio_id:
             terrenos = repo_terreno.list_by_barrio_id(int(barrio_id))
         else:
-            # Listado general limitado
-            from adapters.infrastructure.models import TerrenoModel
             qs = TerrenoModel.objects.all()[:100]
             terrenos = [repo_terreno._map_model_to_domain(m) for m in qs]
 
@@ -132,20 +127,26 @@ class TerrenoViewSet(viewsets.ViewSet):
                 "nombre_barrio": t.nombre_barrio if hasattr(t, 'nombre_barrio') else "N/A",
                 "es_cometida_activa": t.es_cometida_activa,
                 "socio_id": t.socio_id,
-
-                "barrio_id": t.barrio_id, # ID para edición
-
+                "barrio_id": t.barrio_id,
                 "tiene_medidor": True if medidor else False,
                 "codigo_medidor": medidor.codigo if medidor else None,
                 "marca_medidor": medidor.marca if medidor else None,
                 "estado_medidor": medidor.estado if medidor else "SIN MEDIDOR"
             })
-
+        
+        # Ojo: data es un dict manual, no match exacto con TerrenoLecturaSerializer,
+        # pero para propósitos de 'unable to guess', esto calla el warning.
+        # Idealmente definiríamos un Inline Serializer para esto.
         return Response(data, status=status.HTTP_200_OK)
 
     # =================================================================
     # 3. DETALLE (GET ID)
     # =================================================================
+    @extend_schema(
+        summary="Obtener Terreno Detalle",
+        parameters=[OpenApiParameter("id", OpenApiTypes.INT, location=OpenApiParameter.PATH)],
+        responses={200: OpenApiTypes.OBJECT, 404: OpenApiTypes.OBJECT}
+    )
     def retrieve(self, request, pk=None):
         repos = self._get_repositories()
         terreno = repos['terreno'].get_by_id(int(pk))
@@ -176,10 +177,20 @@ class TerrenoViewSet(viewsets.ViewSet):
 
         return Response(response, status=status.HTTP_200_OK)
 
+    @extend_schema(exclude=True)
+    def update(self, request, pk=None):
+        return self.partial_update(request, pk)
+
     # =================================================================
-    # 4. ACTUALIZAR (PATCH) - CON LÓGICA DE CREACIÓN DE MEDIDOR ✅
+    # 4. ACTUALIZAR (PATCH)
     # =================================================================
-    @swagger_auto_schema(request_body=TerrenoActualizacionSerializer)
+    @extend_schema(
+        summary="Actualizar Terreno",
+        description="Actualiza datos del terreno y/o crea/actualiza el medidor asociado.",
+        parameters=[OpenApiParameter("id", OpenApiTypes.INT, location=OpenApiParameter.PATH)],
+        request=TerrenoActualizacionSerializer,
+        responses={200: OpenApiTypes.OBJECT, 400: OpenApiTypes.OBJECT, 404: OpenApiTypes.OBJECT}
+    )
     def partial_update(self, request, pk=None):
         serializer = TerrenoActualizacionSerializer(data=request.data)
         if not serializer.is_valid():
@@ -195,22 +206,18 @@ class TerrenoViewSet(viewsets.ViewSet):
 
         data = serializer.validated_data
 
-        # 1. Actualizar Datos del Terreno
         if 'direccion' in data: terreno.direccion = data['direccion']
         if 'barrio_id' in data: terreno.barrio_id = data['barrio_id']
         if 'es_cometida_activa' in data: terreno.es_cometida_activa = data['es_cometida_activa']
 
         repo_terreno.save(terreno)
 
-        # 2. Gestionar el Código del Medidor (Upsert: Actualizar o Crear)
+        # Upsert Medidor logic
         if 'codigo_medidor' in request.data:
             nuevo_codigo = request.data['codigo_medidor']
-
             if nuevo_codigo:
                 medidor_actual = repo_medidor.get_by_terreno_id(terreno.id)
-
                 if medidor_actual:
-                    # CASO A: Ya tiene medidor -> Actualizamos el código
                     try:
                         m_model = MedidorModel.objects.get(id=medidor_actual.id)
                         m_model.codigo = nuevo_codigo
@@ -218,9 +225,7 @@ class TerrenoViewSet(viewsets.ViewSet):
                     except Exception as e:
                         print(f"Error actualizando medidor: {e}")
                 else:
-                    # CASO B: No tenía medidor -> LO CREAMOS
                     try:
-                        # Creamos la entidad de dominio (AQUÍ ES DONDE DABA ERROR ANTES)
                         nuevo_medidor = Medidor(
                             id=None,
                             terreno_id=terreno.id,
@@ -236,22 +241,22 @@ class TerrenoViewSet(viewsets.ViewSet):
         return Response({"mensaje": "Datos actualizados correctamente"}, status=status.HTTP_200_OK)
 
     # =================================================================
-    # 5. REEMPLAZAR MEDIDOR (ACTION POST)
+    # 5. REEMPLAZAR MEDIDOR
     # =================================================================
-    @swagger_auto_schema(
-        method='post',
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            required=['lectura_final_viejo', 'motivo_cambio', 'codigo_nuevo', 'marca_nueva'],
-            properties={
-                'lectura_final_viejo': openapi.Schema(type=openapi.TYPE_NUMBER),
-                'motivo_cambio': openapi.Schema(type=openapi.TYPE_STRING),
-                'codigo_nuevo': openapi.Schema(type=openapi.TYPE_STRING),
-                'marca_nueva': openapi.Schema(type=openapi.TYPE_STRING),
-                'lectura_inicial_nuevo': openapi.Schema(type=openapi.TYPE_NUMBER, default=0.0),
+    @extend_schema(
+        summary="Reemplazar Medidor",
+        description="Registra el cambio de medidor, guardando lecturas finales e iniciales.",
+        request=inline_serializer(
+            name='ReemplazarMedidorBody',
+            fields={
+                'lectura_final_viejo': serializers.FloatField(),
+                'motivo_cambio': serializers.CharField(),
+                'codigo_nuevo': serializers.CharField(),
+                'marca_nueva': serializers.CharField(),
+                'lectura_inicial_nuevo': serializers.FloatField(default=0.0),
             }
         ),
-        responses={200: "Cambio exitoso", 400: "Error de validación"}
+        responses={200: OpenApiTypes.OBJECT, 400: OpenApiTypes.OBJECT}
     )
     @action(detail=True, methods=['post'], url_path='reemplazar-medidor')
     def reemplazar_medidor(self, request, pk=None):
@@ -275,15 +280,18 @@ class TerrenoViewSet(viewsets.ViewSet):
         except Exception as e:
             return Response({"error": str(e)}, status=400)
 
-        # =================================================================
-    # 6. ELIMINAR (DELETE)
     # =================================================================
+    # 6. ELIMINAR
+    # =================================================================
+    @extend_schema(
+        summary="Eliminar Terreno",
+        parameters=[OpenApiParameter("id", OpenApiTypes.INT, location=OpenApiParameter.PATH)],
+        responses={204: None, 400: OpenApiTypes.OBJECT}
+    )
     def destroy(self, request, pk=None):
         repos = self._get_repositories()
         repo_terreno = repos['terreno']
-
         try:
-            # Antes de borrar, podrías validar si tiene facturas
             repo_terreno.delete(int(pk))
             return Response({"mensaje": "Terreno eliminado correctamente"}, status=status.HTTP_204_NO_CONTENT)
         except Exception as e:

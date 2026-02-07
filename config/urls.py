@@ -9,34 +9,10 @@ from django.conf.urls.static import static
 from rest_framework_simplejwt.views import TokenRefreshView
 from adapters.api.views.auth_views import CustomTokenObtainPairView
 
-# 2. Documentación Automática (Swagger / OpenAPI)
-from rest_framework import permissions
-from drf_yasg.views import get_schema_view
-from drf_yasg import openapi
+# 2. Documentación Automática (OpenAPI 3.0 - drf-spectacular)
+from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
-# --- Configuración de Metadatos de la API (Swagger) ---
-schema_view = get_schema_view(
-   openapi.Info(
-      title="API Junta de Agua 'El Arbolito' & SRI",
-      default_version='v1',
-      description="""
-      **Sistema de Gestión de Agua y Facturación Electrónica.**
-      
-      **GUÍA DE AUTENTICACIÓN:**
-      1. Genera tu token en `/api/v1/token/`.
-      2. Copia el valor de `access`.
-      3. Haz clic en el botón **Authorize** (candado gris).
-      4. Escribe: `Bearer TU_TOKEN_AQUI` (respetando el espacio).
-      5. Haz clic en 'Authorize' y 'Close'.
-      """,
-      contact=openapi.Contact(email="admin@juntaarbolito.com"),
-      license=openapi.License(name="BSD License"),
-   ),
-   public=True,
-   permission_classes=(permissions.AllowAny,),
-)
-
-# --- LISTA ÚNICA DE RUTAS ---
+# --- LISTA ÚNICA DE RUTAS (ESTÁNDAR v5.1) ---
 urlpatterns = [
     # 1. Panel de Administración
     path('admin/', admin.site.urls),
@@ -48,9 +24,13 @@ urlpatterns = [
     # 3. Endpoints de Negocio (Tus Adaptadores)
     path('api/v1/', include('adapters.api.urls')),
 
-    # 4. Documentación
-    path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
-    path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
+    # 4. Documentación Moderna (OpenAPI 3) - TODAS BAJO /api/
+    # Schema (YAML/JSON)
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    # Swagger UI (Renombrado de /swagger/ a /api/docs/)
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    # Redoc (Documentación Cliente - Renombrado de /redoc/ a /api/redoc/)
+    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 ]
 
 # --- CONFIGURACIÓN DE MEDIA (FOTOS) EN MODO DEBUG ---

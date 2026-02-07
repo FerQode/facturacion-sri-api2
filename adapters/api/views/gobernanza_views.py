@@ -2,7 +2,7 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from drf_yasg.utils import swagger_auto_schema
+from drf_spectacular.utils import extend_schema, OpenApiParameter
 
 from core.use_cases.gobernanza.crear_evento_use_case import CrearEventoUseCase, CrearEventoRequest
 from core.use_cases.gobernanza.registrar_asistencia_use_case import RegistrarAsistenciaUseCase
@@ -31,7 +31,7 @@ class EventoViewSet(viewsets.ModelViewSet):
             return CrearEventoRequestSerializer
         return EventoSerializer
 
-    @swagger_auto_schema(request_body=CrearEventoRequestSerializer)
+    @extend_schema(request=CrearEventoRequestSerializer)
     def create(self, request, *args, **kwargs):
         serializer = CrearEventoRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -58,16 +58,6 @@ class EventoViewSet(viewsets.ModelViewSet):
             )
             evento = use_case.execute(req)
             
-            # Retornar respuesta
-            # Serialize the domain object or the model. 
-            # Ideally return the model instance if we want to use EventoSerializer (ModelSerializer).
-            # But execute returns Domain Object via UseCase.
-            # We can re-fetch model or serialize the domain object manually. 
-            # Or easier: just return success message or simple data for MVP.
-            # But frontend needs ID.
-            # Let's map domain back to response dict or serialize it. 
-            # EventoSerializer expects Model instance usually. 
-            
             return Response({
                 "id": evento.id,
                 "nombre": evento.nombre,
@@ -85,9 +75,6 @@ class EventoViewSet(viewsets.ModelViewSet):
         """
         Retorna la lista de asistencia del evento.
         """
-        # Necesitamos el ID del evento. 
-        # pk viene de la URL.
-        # Validar si existe evento.
         try:
             evento = EventoModel.objects.get(pk=pk)
         except EventoModel.DoesNotExist:
@@ -98,7 +85,7 @@ class EventoViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=['put'])
-    @swagger_auto_schema(request_body=RegistrarAsistenciaRequestSerializer)
+    @extend_schema(request=RegistrarAsistenciaRequestSerializer)
     def registrar_asistencia(self, request, pk=None):
         """
         Actualiza los presentes. Recibe lista de IDs de socios que asistieron.
@@ -141,7 +128,7 @@ class EventoViewSet(viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=['post'], url_path='justificar')
-    @swagger_auto_schema(request_body=ProcesarJustificacionRequestSerializer)
+    @extend_schema(request=ProcesarJustificacionRequestSerializer)
     def justificar(self, request):
         """
         Procesa la justificación de una falta (Aprobar/Rechazar).

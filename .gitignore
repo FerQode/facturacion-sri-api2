@@ -38,3 +38,13 @@ config/local_settings.py
 .DS_Store
 Thumbs.db
 tmp/
+__pycache__/
+*.pyc
+venv/
+.env
+db.sqlite3
+.vscode/
+*.log
+media/
+staticfiles/
+modelos_actuales.txt
