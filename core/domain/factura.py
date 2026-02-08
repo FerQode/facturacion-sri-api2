@@ -30,7 +30,6 @@ class Factura:
     socio_id: int
     medidor_id: Optional[int]
     fecha_emision: date
-    fecha_emision: date
     fecha_vencimiento: date
     
     # Periodo Fiscal
