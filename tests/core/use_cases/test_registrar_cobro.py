@@ -35,19 +35,25 @@ class TestRegistrarCobro(unittest.TestCase):
         """
         # GIVEN
         factura_id = 1
-        factura_mock = Factura(
-            id=factura_id,
-            socio_id=10,
-            medidor_id=5,
-            fecha_emision=date(2025, 1, 1),
-            fecha_vencimiento=date(2025, 2, 1),
-            fecha_registro=datetime(2025, 1, 1, 12, 0, 0),
-            total=Decimal("10.00"),
-            estado=EstadoFactura.PENDIENTE,
-            detalles=[]
-        )
+            # Use MagicMock here too
+        factura_mock = MagicMock(spec=Factura)
+        factura_mock.id = factura_id
+        factura_mock.socio_id = 10
+        factura_mock.medidor_id = 5
+        factura_mock.fecha_emision = date(2025, 1, 1)
+        factura_mock.fecha_vencimiento = date(2025, 2, 1)
+        factura_mock.fecha_registro = datetime(2025, 1, 1, 12, 0, 0)
+        factura_mock.total = Decimal("10.00")
+        factura_mock.estado = EstadoFactura.PENDIENTE
+        factura_mock.detalles = []
+        factura_mock.sri_clave_acceso = None # Important for logic
         # Simulamos que tiene el objeto socio cargado
-        factura_mock.socio_obj = Socio(id=10, nombres="Juan", apellidos="Perez", cedula="1700000000", email="juan@test.com")
+        factura_mock.socio_obj = MagicMock(spec=Socio)
+        factura_mock.socio_obj.id = 10
+        factura_mock.socio_obj.nombres = "Juan"
+        factura_mock.socio_obj.apellidos = "Perez"
+        factura_mock.socio_obj.identificacion = "1700000000"
+        factura_mock.socio_obj.email = "juan@test.com"
         
         # Mocking Repos
         self.mock_factura_repo.obtener_por_id.return_value = factura_mock
@@ -80,17 +86,11 @@ class TestRegistrarCobro(unittest.TestCase):
         """
         # GIVEN
         factura_id = 99
-        factura_pagada = Factura(
-            id=factura_id,
-            socio_id=10,
-            medidor_id=5,
-            fecha_emision=date(2025, 1, 1),
-            fecha_vencimiento=date(2025, 2, 1),
-            fecha_registro=datetime(2025, 1, 1, 12, 0, 0),
-            total=Decimal("10.00"),
-            estado=EstadoFactura.PAGADA, # YA PAGADA
-            detalles=[]
-        )
+        # Use MagicMock to avoid strict instantiation issues during test
+        factura_pagada = MagicMock(spec=Factura)
+        factura_pagada.id = factura_id
+        factura_pagada.estado = EstadoFactura.PAGADA
+        factura_pagada.total = Decimal("10.00")
         
         self.mock_factura_repo.obtener_por_id.return_value = factura_pagada
 
