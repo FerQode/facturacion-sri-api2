@@ -1,3 +1,4 @@
+# adapters/infrastructure/models/inventario_models.py
 from django.db import models
 from simple_history.models import HistoricalRecords
 from .catalogo_models import CatalogoRubroModel

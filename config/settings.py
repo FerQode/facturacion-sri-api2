@@ -1,106 +1,69 @@
 # config/settings.py
 """
 Django settings for config project.
-Editado para Arquitectura Limpia + Facturación SRI + Notificaciones Email.
-Nivel: Producción Profesional.
+Enterprise Grade: Production Ready (Railway + S3 Tigris + WhiteNoise).
 """
 
 import os
 import sys
 from pathlib import Path
 from datetime import timedelta
-import dotenv  # pip install python-dotenv
-import dj_database_url  # pip install dj-database-url
+import dotenv
+import dj_database_url
 
 # ==============================================================================
-# 0. CONFIGURACIÓN COMPATIBILIDAD WINDOWS (WeasyPrint/GTK3) - DIAGNÓSTICO
-# ==============================================================================
-if os.name == 'nt':
-    # Lista de sospechosos habituales
-    posibles_rutas = [
-        r"C:\Program Files\GTK3-Runtime Win64\bin",
-        r"C:\Program Files (x86)\GTK3-Runtime Win64\bin",
-        r"C:\GTK3-Runtime Win64\bin", # A veces se instala en la raíz
-    ]
-    
-    gtk_encontrado = False
-    
-    for path in posibles_rutas:
-        if os.path.exists(path):
-            print(f"✅ DIAGNÓSTICO: GTK3 encontrado en: {path}")
-            try:
-                # 1. Método Moderno (Python 3.8+)
-                os.add_dll_directory(path)
-                # 2. Método Clásico (Hack para Windows tercos)
-                os.environ['PATH'] = path + os.pathsep + os.environ['PATH']
-                gtk_encontrado = True
-                break
-            except Exception as e:
-                print(f"⚠️ Alerta: Error cargando DLLs: {e}")
-    
-    if not gtk_encontrado:
-        print("❌ ERROR CRÍTICO: No se encontró la carpeta 'bin' de GTK3.")
-        print("   -> Buscado en: " + ", ".join(posibles_rutas))
-        print("   -> Por favor, reinstala GTK3 asegurando la ruta por defecto.")
-
-# ==============================================================================
-# 0. FUNCIONES DE UTILIDAD (Best Practice)
-# ==============================================================================
-def get_env_bool(var_name, default=False):
-    """Convierte variables de entorno 'True', 'true', '1' en booleanos reales."""
-    return str(os.getenv(var_name, str(default))).lower() in ('true', '1', 'yes')
-
-# ==============================================================================
-# 1. CONFIGURACIÓN BÁSICA Y RUTAS
+# 0. UTILITIES & ENV
 # ==============================================================================
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Cargar .env
+# Cargar .env si existe (Local Development)
 dotenv_path = BASE_DIR / '.env'
 if dotenv_path.exists():
     dotenv.load_dotenv(dotenv_path)
-else:
-    # En producción esto no es un error, ya que las variables pueden venir del sistema (Railway)
-    print("ℹ️ INFO: No se encontró .env, usando variables del sistema.")
+
+def get_env_bool(var_name, default=False):
+    """Convierte variables de entorno 'True', '1' en booleanos reales."""
+    return str(os.getenv(var_name, str(default))).lower() in ('true', '1', 'yes')
+
+def get_env_list(var_name, default=''):
+    """Convierte string separado por comas en lista."""
+    val = os.getenv(var_name, default)
+    if not val:
+        return []
+    return [x.strip() for x in val.split(',') if x.strip()]
 
 # ==============================================================================
-# 2. SEGURIDAD (SECURITY HARDENING)
+# 1. CORE & SECURITY (FAIL FAST)
 # ==============================================================================
-
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
 
-# Fail Fast: Si no hay llave secreta en producción, que el sistema falle inmediatamente.
-if not SECRET_KEY:
-    if os.getenv('RAILWAY_ENVIRONMENT'): # Si estamos en Railway
-        raise ValueError("❌ ERROR CRÍTICO: DJANGO_SECRET_KEY no está configurada.")
-    SECRET_KEY = 'django-insecure-dev-key-only-for-local-testing'
+# Build Safety: Si estamos construyendo el contenedor, usamos una llave falsa
+IS_BUILD_PROCESS = os.getenv('DJANGO_SECRET_KEY') == 'build-mode-only'
 
-# Uso de la función helper para evitar errores de string
+if not SECRET_KEY:
+    if get_env_bool('RAILWAY_ENVIRONMENT'):
+        raise ValueError("❌ CRITICAL: DJANGO_SECRET_KEY missing in Production.")
+    SECRET_KEY = 'django-insecure-local-dev-key' 
+
 DEBUG = get_env_bool('DEBUG', False)
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
+ALLOWED_HOSTS = get_env_list('ALLOWED_HOSTS', '*')
 
-# --- Configuración HTTPS para Producción (Vital para certificaciones) ---
-if not DEBUG:
-    # Fuerza a usar HTTPS
+# HTTPS & Proxies (Railway)
+if not DEBUG and not IS_BUILD_PROCESS:
     SECURE_SSL_REDIRECT = True
-    # Evita que el navegador acceda a cookies por Javascript
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    # HSTS: Le dice al navegador "Nunca entres aquí por HTTP normal" por 1 año
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
-    # Confianza en el Proxy de Railway (Load Balancer)
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-# Orígenes confiables para CSRF (importante para API + Admin)
-CSRF_TRUSTED_URLS = os.getenv('CSRF_TRUSTED_URLS', '')
-if CSRF_TRUSTED_URLS:
-    CSRF_TRUSTED_ORIGINS = [url.strip() for url in CSRF_TRUSTED_URLS.split(',')]
+# CSRF Trusted Origins (Vital para Admin Panel en Prod)
+CSRF_TRUSTED_ORIGINS = get_env_list('CSRF_TRUSTED_URLS')
 
 # ==============================================================================
-# 3. APLICACIONES
+# 2. APPS & MIDDLEWARE
 # ==============================================================================
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -110,37 +73,34 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    # Third party
+    # Third Party
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
     'drf_spectacular',
+    'simple_history',
+    'storages', # AWS S3 Support
 
-    # Local Apps (Arquitectura Limpia)
+    # Local Apps
     'adapters.api.apps.ApiConfig',
     'adapters.infrastructure.apps.InfrastructureConfig',
-    
-    # Audit
-    'simple_history',
 ]
 
-# ==============================================================================
-# 4. MIDDLEWARE
-# ==============================================================================
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'corsheaders.middleware.CorsMiddleware', # CORS antes de todo lo demás
-    'whitenoise.middleware.WhiteNoiseMiddleware', # WhiteNoise para estáticos
+    'corsheaders.middleware.CorsMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware', # Static Files
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'simple_history.middleware.HistoryRequestMiddleware', # ✅ Audit Middleware
+    'simple_history.middleware.HistoryRequestMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
+WSGI_APPLICATION = 'config.wsgi.application'
 
 TEMPLATES = [
     {
@@ -157,36 +117,76 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'config.wsgi.application'
-
 # ==============================================================================
-# 5. BASE DE DATOS (PROFESIONAL)
+# 3. DATABASE (Build Safe)
 # ==============================================================================
+DATABASE_URL = os.getenv('DATABASE_URL')
 
-DATABASES = {
-    'default': dj_database_url.config(
-        default=os.getenv('DATABASE_URL'),
-        conn_max_age=600,
-        conn_health_checks=True,
-    )
-}
-
-# Fallback para el proceso de build (collectstatic) donde no hay base de datos
-if not DATABASES['default']:
-    DATABASES['default'] = {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': ':memory:',
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
+    }
+    # MySQL Fine-tuning
+    if not DEBUG and 'mysql' in DATABASES['default']['ENGINE']:
+        DATABASES['default']['OPTIONS'] = {'charset': 'utf8mb4'}
+else:
+    # Fallback para build de Docker (collectstatic) o dev sin DB
+    print("ℹ️  INFO: Usando SQLite en memoria (Build Mode).")
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
     }
 
-# Ajuste fino para MySQL en Producción
-if not DEBUG and 'ENGINE' in DATABASES['default'] and 'mysql' in DATABASES['default']['ENGINE']:
-    DATABASES['default']['OPTIONS'] = {
-        # MySQL suele requerir configuración explícita si el servidor fuerza SSL
-        # 'ssl': {'ca': '/path/to/ca-cert.pem'} # Descomentar si Railway te da un certificado CA específico
+# ==============================================================================
+# 4. STORAGE & STATIC FILES (S3 + WhiteNoise)
+# ==============================================================================
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
+USE_S3 = get_env_bool('USE_S3', False)
+
+if USE_S3:
+    # Tigris / AWS S3 Configuration
+    AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+    AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
+    AWS_S3_ENDPOINT_URL = os.getenv('AWS_S3_ENDPOINT_URL')
+    AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'auto')
+    
+    # Compatibilidad Tigris
+    AWS_S3_SIGNATURE_VERSION = 's3v4'
+    AWS_QUERYSTRING_AUTH = True 
+    AWS_S3_OBJECT_PARAMETERS = {'CacheControl': 'max-age=86400'}
+
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+        },
+        "staticfiles": {
+            # WhiteNoise es mejor para estáticos incluso usando S3 para media
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+else:
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
     }
 
 # ==============================================================================
-# 6. PASSWORD & AUTH
+# 5. PASSWORD & AUTH
 # ==============================================================================
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -195,73 +195,18 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-# ==============================================================================
-# 7. LOCALIZACIÓN
-# ==============================================================================
 LANGUAGE_CODE = 'es-ec'
 TIME_ZONE = 'America/Guayaquil'
 USE_I18N = True
 USE_TZ = True
 
 # ==============================================================================
-# 8. ARCHIVOS ESTÁTICOS (MODERNIZADO DJANGO 5)
-# ==============================================================================
-STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
-
-# Sintaxis moderna para Django 4.2+ y 5.x
-# Configuración de Almacenamiento (S3 vs Local)
-USE_S3 = os.getenv('USE_S3') == 'TRUE'
-
-if USE_S3:
-    # Configuración para Railway Bucket (Protocolo S3)
-    AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
-    AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
-    AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
-    AWS_S3_ENDPOINT_URL = os.getenv('AWS_S3_ENDPOINT_URL')
-    AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'us-west-1')
-    
-    AWS_S3_OBJECT_PARAMETERS = {
-        'CacheControl': 'max-age=86400',
-    }
-    # Configuración específica para compatibilidad
-    AWS_S3_SIGNATURE_VERSION = 's3v4'
-    AWS_QUERYSTRING_AUTH = True 
-    
-    STORAGES = {
-        "default": {
-            "BACKEND": "storages.backends.s3.S3Storage",
-            "OPTIONS": {
-                # 'addressing_style': 'path', # A veces necesario para minio/otros
-            }
-        },
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
-        },
-    }
-else:
-    # Configuración Local (FileSystem)
-    STORAGES = {
-        "default": {
-            "BACKEND": "django.core.files.storage.FileSystemStorage",
-        },
-        "staticfiles": {
-            "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
-        },
-    }
-
-# ==============================================================================
-# 9. DRF & JWT
+# 6. DRF & API
 # ==============================================================================
 REST_FRAMEWORK = {
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
-    ],
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ],
+    'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],
+    'DEFAULT_AUTHENTICATION_CLASSES': ['rest_framework_simplejwt.authentication.JWTAuthentication'],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 SIMPLE_JWT = {
@@ -271,75 +216,39 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
 }
 
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'API ERP El Arbolito',
+    'DESCRIPTION': 'Sistema de Facturación SRI y Gestión de Agua Potable',
+    'VERSION': '5.1.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+}
+
 # ==============================================================================
-# 10. CORS
+# 7. CORS
 # ==============================================================================
-# En producción, NUNCA uses ALLOW_ALL_ORIGINS=True si manejas datos sensibles
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
 else:
     CORS_ALLOW_ALL_ORIGINS = False
-    # Lista explícita de dominios permitidos (Frontend)
-    CORS_ALLOWED_ORIGINS_RAW = os.getenv('CORS_ALLOWED_ORIGINS', '')
-    if CORS_ALLOWED_ORIGINS_RAW:
-        CORS_ALLOWED_ORIGINS = [url.strip() for url in CORS_ALLOWED_ORIGINS_RAW.split(',')]
-    else:
-        CORS_ALLOWED_ORIGINS = []
-
-    # Permitir credenciales (Cookies/Tokens)
-    CORS_ALLOW_CREDENTIALS = True 
+    CORS_ALLOWED_ORIGINS = get_env_list('CORS_ALLOWED_ORIGINS')
+    CORS_ALLOW_CREDENTIALS = True
 
 # ==============================================================================
-# 11. CONFIGURACIÓN SRI (LIMPIA)
+# 8. SRI & BUSINESS LOGIC
 # ==============================================================================
-SRI_FIRMA_PASS = os.getenv('SRI_FIRMA_PASS')
-SRI_FIRMA_BASE64 = os.getenv('SRI_FIRMA_BASE64')
-SRI_FIRMA_PATH = BASE_DIR / 'secrets' / 'el_arbolito.p12'
-SRI_JAR_PATH = BASE_DIR / 'adapters' / 'infrastructure' / 'files' / 'jar' / 'sri.jar'
-
-# Datos Emisor
-SRI_EMISOR_RUC = os.getenv('SRI_EMISOR_RUC')
-SRI_EMISOR_RAZON_SOCIAL = os.getenv('SRI_EMISOR_RAZON_SOCIAL')
-SRI_EMISOR_DIRECCION_MATRIZ = os.getenv('SRI_EMISOR_DIRECCION_MATRIZ')
-SRI_NOMBRE_COMERCIAL = os.getenv('SRI_NOMBRE_COMERCIAL')
-
-# Configuración Técnica
-SRI_SERIE_ESTABLECIMIENTO = os.getenv('SRI_SERIE_ESTABLECIMIENTO')
-SRI_SERIE_PUNTO_EMISION = os.getenv('SRI_SERIE_PUNTO_EMISION')
-SRI_AMBIENTE = int(os.getenv('SRI_AMBIENTE', '1'))
-SRI_URL_RECEPCION = os.getenv('SRI_URL_RECEPCION')
-SRI_URL_AUTORIZACION = os.getenv('SRI_URL_AUTORIZACION')
-SRI_SECUENCIA_INICIO = 600
-
-# Validación solo al arrancar el servidor "runserver" o Gunicorn
-# Evitamos que falle al hacer collectstatic o migraciones
-if 'runserver' in sys.argv or 'gunicorn' in sys.argv[0]:
-    if not SRI_FIRMA_BASE64 and not SRI_FIRMA_PATH.exists():
-        print("⚠️  ADVERTENCIA SRI: No se detectó firma electrónica (local o base64).")
+SRI_CONFIG = {
+    'FIRMA_PASS': os.getenv('SRI_FIRMA_PASS'),
+    'FIRMA_BASE64': os.getenv('SRI_FIRMA_BASE64'),
+    'FIRMA_PATH': BASE_DIR / 'secrets' / 'el_arbolito.p12',
+    'EMISOR_RUC': os.getenv('SRI_EMISOR_RUC'),
+    'AMBIENTE': int(os.getenv('SRI_AMBIENTE', '1')),
+    'URL_RECEPCION': os.getenv('SRI_URL_RECEPCION'),
+    'URL_AUTORIZACION': os.getenv('SRI_URL_AUTORIZACION'),
+}
 
 # ==============================================================================
-# 12. EMAIL
-# ==============================================================================
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
-
-# ==============================================================================
-# 13. CELERY & REDIS
-# ==============================================================================
-CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
-CELERY_ACCEPT_CONTENT = ['json']
-CELERY_TASK_SERIALIZER = 'json'
-CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = TIME_ZONE
-
-# ==============================================================================
-# 14. LOGGING (Optimizado)
+# 9. LOGGING & OBSERVABILITY
 # ==============================================================================
 LOGGING = {
     'version': 1,
@@ -359,8 +268,7 @@ LOGGING = {
             'level': os.getenv('DJANGO_LOG_LEVEL', 'INFO'),
             'propagate': False,
         },
-        # Tu logger personalizado para la Tesis
-        'core': {
+        'core': { # Tu aplicación
             'handlers': ['console'],
             'level': 'DEBUG',
             'propagate': True,
@@ -368,17 +276,8 @@ LOGGING = {
     },
 }
 
+# Celery
+CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-# ==============================================================================
-# 15. CONFIGURACIÓN OPENAPI 3 (DRF-SPECTACULAR)
-# ==============================================================================
-REST_FRAMEWORK['DEFAULT_SCHEMA_CLASS'] = 'drf_spectacular.openapi.AutoSchema'
-
-SPECTACULAR_SETTINGS = {
-    'TITLE': 'API ERP El Arbolito (Facturación SRI)',
-    'DESCRIPTION': 'API para gestión de socios, lecturas de agua y facturación electrónica con firma XAdES-BES.',
-    'VERSION': '1.0.0',
-    'SERVE_INCLUDE_SCHEMA': False,
-    'COMPONENT_SPLIT_REQUEST': True, # Para soportar JWT Bearer Auth correctamente
-}

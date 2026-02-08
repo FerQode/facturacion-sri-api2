@@ -1,2 +1,2 @@
-web: python manage.py migrate && python manage.py collectstatic --noinput && python manage.py initadmin && python manage.py init_roles && gunicorn config.wsgi:application --log-file - --timeout 60
+web: python manage.py migrate && python manage.py collectstatic --noinput && gunicorn config.wsgi:application --bind 0.0.0.0:$PORT --workers 3 --timeout 120
 worker: celery -A config worker --loglevel=info
