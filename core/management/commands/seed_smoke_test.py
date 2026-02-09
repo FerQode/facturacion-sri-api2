@@ -90,7 +90,8 @@ class Command(BaseCommand):
                 factura=factura,
                 rubro=self.rubro_agua,
                 monto_inicial=Decimal('5.00'),
-                saldo_pendiente=Decimal('5.00')
+                saldo_pendiente=Decimal('5.00'),
+                fecha_vencimiento=date(2025, 2, 1)
             )
             self.stdout.write(f"    -> Created Deuda for {socio.nombres}")
             
