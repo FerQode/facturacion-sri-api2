@@ -21,3 +21,6 @@ from .gobernanza_views import EventoViewSet
 from .analytics_views import AnalyticsViewSet
 from .usuario_views import UserProfileView
 from .cobro_views import CobroViewSet
+
+# BILLING MODULE (Nuevo v5.1)
+from .billing_views import ProcesarAbonoView, ConsultarEstadoCuentaView
