@@ -10,7 +10,9 @@ from adapters.api.views import (
     ProcesarAbonoView,
     ProcesarAbonoView,
     ConsultarEstadoCuentaView,
-    EventoViewSet
+    EventoViewSet,
+    CortesViewSet,
+    OrdenTrabajoViewSet
 )
 
 router = DefaultRouter()
@@ -20,6 +22,8 @@ router.register(r'facturas', FacturaViewSet, basename='factura')
 router.register(r'pagos', PagoViewSet, basename='pago')
 router.register(r'rubros', CatalogoRubroViewSet, basename='rubro')
 router.register(r'inventario', ProductoMaterialViewSet, basename='inventario')
+router.register(r'cortes', CortesViewSet, basename='corte')
+router.register(r'ordenes-trabajo', OrdenTrabajoViewSet, basename='orden-trabajo')
 
 urlpatterns = [
     path('', include(router.urls)),

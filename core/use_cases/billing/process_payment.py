@@ -66,9 +66,16 @@ class ProcesarAbonoUseCase:
         pago = PagoModel.objects.create(
             socio=socio,
             monto_total=monto_abono,
-            # usuario_cobro_id=usuario_id, # Asumiendo que existe este campo o similar
-            fecha_pago=timezone.now(),
+            # usuario_cobro_id=usuario_id, 
+            # fecha_pago=timezone.now(),  # Removed: field does not exist, uses auto_now_add in fecha_registro
             numero_comprobante_interno=self._generar_comprobante_interno()
+        )
+        
+        # 3.1. Registrar Método de Pago (Asumimos EFECTIVO único por ahora para simplificar)
+        DetallePagoModel.objects.create(
+            pago=pago,
+            monto=monto_abono, # El total del abono
+            metodo='EFECTIVO' # Por defecto
         )
         
         # 4. Algoritmo de Imputación (Distribution Logic)
@@ -93,18 +100,14 @@ class ProcesarAbonoUseCase:
             
             cuenta.save()
             
-            # Crear Detalle
-            DetallePagoModel.objects.create(
-                pago=pago,
-                cuenta_por_cobrar=cuenta, # Asumiendo relación
-                monto=monto_a_pagar,
-                metodo='EFECTIVO' # Por defecto/Simplificado, idealmente parametrizable
-            )
+            # Nota: No creamos DetallePagoModel aquí porque ese modelo es para "Métodos de Pago" (Tarjeta, Efectivo),
+            # no para "Detalle de Imputación". La trazabilidad detallada requeriría una tabla intermedia (PagoDeuda).
             
             monto_restante_por_asignar -= monto_a_pagar
             cuentas_afectadas_count += 1
             
         # 5. Lógica Operativa (Trigger de Reconexión)
+        # Buscar servicio asociado al socio
         this_servicio = ServicioModel.objects.filter(socio=socio).first()
         estado_servicio_actual = this_servicio.estado if this_servicio else "N/A"
         mensaje_adicional = ""
@@ -112,21 +115,22 @@ class ProcesarAbonoUseCase:
         # Recalcular deuda total remanente
         nueva_deuda_total = deuda_total - monto_abono
         
-        if this_servicio and this_servicio.estado == 'SUSPENDIDO' and nueva_deuda_total == Decimal('0.00'):
-            # TRANSICIÓN DE ESTADO
-            this_servicio.estado = 'PENDIENTE_RECONEXION'
-            this_servicio.save()
-            estado_servicio_actual = 'PENDIENTE_RECONEXION'
-            
-            # SIDE EFFECT: Crear Orden de Trabajo
-            OrdenTrabajoModel.objects.create(
-                servicio=this_servicio,
-                tipo='RECONEXION',
-                estado='PENDIENTE',
-                fecha_generacion=timezone.now(),
-                observacion_tecnico="Generado automáticamente por pago total de deuda."
-            )
-            mensaje_adicional = " Deuda saldada. Se generó Orden de Reconexión."
+        # Validar si aplica reconexión
+        # Nota: La deuda debe ser 0.
+        if this_servicio and this_servicio.estado == 'SUSPENDIDO' and nueva_deuda_total <= Decimal('0.00'):
+            from core.use_cases.servicio.solicitar_reconexion_use_case import SolicitarReconexionUseCase
+            try:
+                uc_reconexion = SolicitarReconexionUseCase()
+                # Ejecutamos la reconexión. Al estar en la misma transacción, 
+                # SolicitarReconexion verá que la deuda ya fue saldada (saldo=0) por el loop anterior.
+                res_reconexion = uc_reconexion.ejecutar(this_servicio.id)
+                
+                estado_servicio_actual = res_reconexion['nuevo_estado']
+                mensaje_adicional = f" {res_reconexion['mensaje']}"
+            except ValueError as e:
+                # Si falla la reconexión por alguna razón (ej. validación extra), 
+                # no fallamos el pago, solo logueamos o avisamos.
+                mensaje_adicional = f" Pago ok, pero error en reconexión: {str(e)}"
             
         return AbonoResponse(
             pago_id=pago.id,

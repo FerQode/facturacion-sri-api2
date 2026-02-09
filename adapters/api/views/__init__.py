@@ -24,3 +24,6 @@ from .cobro_views import CobroViewSet
 
 # BILLING MODULE (Nuevo v5.1)
 from .billing_views import ProcesarAbonoView, ConsultarEstadoCuentaView
+
+# SERVICE MANAGEMENT (Fase 3)
+from .servicio_views import CortesViewSet, OrdenTrabajoViewSet

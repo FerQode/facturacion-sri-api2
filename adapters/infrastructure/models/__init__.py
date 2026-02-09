@@ -19,6 +19,7 @@ from .sri_models import SRISecuencialModel
 from .catalogo_models import CatalogoRubroModel
 from .cuenta_por_cobrar_model import CuentaPorCobrarModel
 from .orden_trabajo_model import OrdenTrabajoModel
+from .evidencia_orden_model import EvidenciaOrdenTrabajoModel
 from .inventario_models import ProductoMaterial
 
 # 4. Actualizamos la lista __all__ para exportar todo limpiamente
@@ -41,5 +42,6 @@ __all__ = [
     'CatalogoRubroModel',
     'CuentaPorCobrarModel',
     'OrdenTrabajoModel',
+    'EvidenciaOrdenTrabajoModel',
     'ProductoMaterial',
 ]
