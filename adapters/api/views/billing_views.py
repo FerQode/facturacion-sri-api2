@@ -95,13 +95,13 @@ class ConsultarEstadoCuentaView(APIView):
         for c in cuentas_pendientes:
             concepto = f"Deuda #{c.id}"
             if c.factura:
-                concepto = f"Factura SRI {c.factura.numero_secuencial if c.factura.numero_secuencial else 'S/N'}"
+                concepto = f"Factura #{c.factura.id}"
             elif c.multa:
                 concepto = f"Multa: {c.multa.motivo}"
             
             items.append({
                 'id': c.id,
-                'fecha_emision': c.fecha_emision,
+                'fecha_emision': c.fecha_emision.strftime('%Y-%m-%d'),
                 'concepto': concepto,
                 'saldo_pendiente': c.saldo_pendiente,
                 # Corrección de Esquema: Usar monto_inicial en lugar de monto_total
@@ -111,7 +111,9 @@ class ConsultarEstadoCuentaView(APIView):
                 'nombre_terreno': _get_nombre_terreno(c),
                 'tiene_medidor': _check_tiene_medidor(c),
                 'detalle_consumo': _get_detalle_consumo(c),
-                'mes_facturado': _get_mes_facturado(c)
+                'mes_facturado': _get_mes_facturado(c),
+                'tipo_servicio': _get_tipo_servicio(c),
+                'periodo': _get_mes_facturado(c)
             })
 
         data = {
@@ -130,7 +132,12 @@ class ConsultarEstadoCuentaView(APIView):
 def _get_nombre_terreno(cuenta):
     if cuenta.factura and cuenta.factura.servicio and cuenta.factura.servicio.terreno:
         t = cuenta.factura.servicio.terreno
-        return f"{t.ubicacion} (Mz {t.manzana or '-'} Lote {t.numero_lote or '-'})"
+        return f"{t.direccion} ({t.barrio.nombre})"
+    return "N/A"
+
+def _get_tipo_servicio(cuenta):
+    if cuenta.factura and cuenta.factura.servicio:
+        return cuenta.factura.servicio.get_tipo_display()
     return "N/A"
 
 def _check_tiene_medidor(cuenta):

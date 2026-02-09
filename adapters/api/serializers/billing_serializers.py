@@ -52,7 +52,7 @@ class DeudaItemSerializer(serializers.Serializer):
     Representa una deuda individual (Factura o Multa) pendiente.
     """
     id = serializers.IntegerField(help_text="ID de la Cuenta por Cobrar")
-    fecha_emision = serializers.DateTimeField(format="%Y-%m-%d")
+    fecha_emision = serializers.CharField()
     concepto = serializers.CharField(help_text="Descripción de la deuda (ej: Factura 001-001-123)")
     saldo_pendiente = serializers.DecimalField(max_digits=10, decimal_places=2)
     total_original = serializers.DecimalField(max_digits=10, decimal_places=2)
@@ -62,6 +62,8 @@ class DeudaItemSerializer(serializers.Serializer):
     tiene_medidor = serializers.BooleanField(default=False)
     detalle_consumo = serializers.CharField(required=False, allow_null=True)
     mes_facturado = serializers.CharField(required=False, allow_null=True)
+    tipo_servicio = serializers.CharField(required=False, allow_null=True)
+    periodo = serializers.CharField(required=False, allow_null=True)
 
 class EstadoCuentaSerializer(serializers.Serializer):
     """

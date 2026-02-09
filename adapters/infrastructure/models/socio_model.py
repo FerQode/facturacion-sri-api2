@@ -42,6 +42,7 @@ class SocioModel(models.Model):
     email = models.EmailField(max_length=254, null=True, blank=True)
     email_notificacion = models.EmailField(max_length=254, null=True, blank=True, verbose_name="Email para Facturación")
     telefono = models.CharField(max_length=20, null=True, blank=True)
+    fecha_nacimiento = models.DateField(verbose_name="Fecha de Nacimiento", null=True, blank=True) # Added to match DB
     
     # --- CORRECCIÓN DE ESTANDARIZACIÓN ---
     # Renombramos 'barrio_domicilio' a 'barrio' para que coincida con
