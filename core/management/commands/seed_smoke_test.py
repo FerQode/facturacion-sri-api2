@@ -1,7 +1,7 @@
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, date
 from decimal import Decimal
 import random
 
@@ -77,8 +77,8 @@ class Command(BaseCommand):
             factura = FacturaModel.objects.create(
                 socio=socio,
                 servicio=servicio,
-                fecha_emision=timezone.now().date(),
-                fecha_vencimiento=timezone.now().date() + timedelta(days=30),
+                fecha_emision=date(2025, 1, 1),
+                fecha_vencimiento=date(2025, 2, 1),
                 subtotal=Decimal('5.00'),
                 total=Decimal('5.00'),
                 estado=EstadoFactura.PENDIENTE.value
