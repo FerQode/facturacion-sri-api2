@@ -8,14 +8,17 @@ from adapters.api.views import (
     CatalogoRubroViewSet,
     ProductoMaterialViewSet,
     ProcesarAbonoView,
-    ProcesarAbonoView,
     ConsultarEstadoCuentaView,
     EventoViewSet,
     CortesViewSet,
     OrdenTrabajoViewSet,
     POSViewSet,
     InventarioViewSet,
-    BarrioViewSet
+    BarrioViewSet,
+    # Nuevos Endpoints Frontend
+    UserProfileView,
+    CobroViewSet,
+    DescargarRideView
 )
 
 router = DefaultRouter()
@@ -33,10 +36,15 @@ router.register(r'ordenes-trabajo', OrdenTrabajoViewSet, basename='ordenes-traba
 # Fase 4 - POS & Inventario
 router.register(r'pos', POSViewSet, basename='pos')
 router.register(r'inventario', InventarioViewSet, basename='inventario')
+# Fase 5 - Cobros (Caja)
+router.register(r'cobros', CobroViewSet, basename='cobro')
 
 urlpatterns = [
     path('', include(router.urls)),
     path('billing/pagar/', ProcesarAbonoView.as_view(), name='procesar-abono'),
     path('billing/estado-cuenta/<int:socio_id>/', ConsultarEstadoCuentaView.as_view(), name='consultar-estado-cuenta'),
+    # Endpoints explícitos requeridos por Frontend
+    path('users/profile/', UserProfileView.as_view(), name='user-profile'),
+    path('facturas/<int:factura_id>/pdf/', DescargarRideView.as_view(), name='descargar-ride'),
 ]
 
