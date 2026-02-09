@@ -14,11 +14,13 @@ from adapters.api.views import (
     CortesViewSet,
     OrdenTrabajoViewSet,
     POSViewSet,
-    InventarioViewSet
+    InventarioViewSet,
+    BarrioViewSet
 )
 
 router = DefaultRouter()
 router.register(r'eventos', EventoViewSet, basename='evento')
+router.register(r'barrios', BarrioViewSet, basename='barrio')
 router.register(r'socios', SocioViewSet, basename='socio')
 router.register(r'facturas', FacturaViewSet, basename='factura')
 router.register(r'pagos', PagoViewSet, basename='pago')

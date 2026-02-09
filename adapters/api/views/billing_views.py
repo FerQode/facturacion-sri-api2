@@ -96,8 +96,10 @@ class ConsultarEstadoCuentaView(APIView):
             concepto = f"Deuda #{c.id}"
             if c.factura:
                 concepto = f"Factura #{c.factura.id}"
-            elif c.multa:
-                concepto = f"Multa: {c.multa.motivo}"
+            elif c.origen_referencia:
+                concepto = f"{c.rubro.nombre}: {c.origen_referencia}"
+            else:
+                concepto = c.rubro.nombre
             
             items.append({
                 'id': c.id,
