@@ -231,6 +231,11 @@ else:
     # HYBRID TESTING: Allow localhost explicitly for local frontend dev against prod backend
     CORS_ALLOWED_ORIGINS.extend(["http://localhost:4200", "http://127.0.0.1:4200"])
     CORS_ALLOW_CREDENTIALS = True
+    # CORS Hardening
+    from corsheaders.defaults import default_headers
+    CORS_ALLOW_HEADERS = list(default_headers) + [
+        'Authorization',
+    ]
 
 # ==============================================================================
 # 8. SRI & BUSINESS LOGIC

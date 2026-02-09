@@ -115,7 +115,9 @@ class ConsultarEstadoCuentaView(APIView):
                 'detalle_consumo': _get_detalle_consumo(c),
                 'mes_facturado': _get_mes_facturado(c),
                 'tipo_servicio': _get_tipo_servicio(c),
-                'periodo': _get_mes_facturado(c)
+                'periodo': _get_mes_facturado(c),
+                # ✅ ID de Factura para generar PDF en Frontend
+                'factura_id': c.factura.id if c.factura else None
             })
 
         data = {

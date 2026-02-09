@@ -58,7 +58,7 @@ class DescargarRideView(APIView):
             filename = f"factura_{factura_orm.sri_clave_acceso}.pdf"
             response = HttpResponse(pdf_bytes, content_type='application/pdf')
             # 'attachment' descarga el archivo. 'inline' lo abre en el navegador.
-            response['Content-Disposition'] = f'inline; filename="{filename}"'
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
             
             return response
 
