@@ -1,32 +1,70 @@
-# core/use_cases/gobernanza/registrar_asistencia_use_case.py 
-from typing import List
-from core.interfaces.repositories import IAsistenciaRepository
-from core.domain.asistencia import Asistencia
+# core/use_cases/gobernanza/registrar_asistencia_use_case.py
+from typing import List, TypedDict
+from django.db import transaction
+from django.utils import timezone
+from core.shared.enums import EstadoEvento, EstadoAsistencia
+from adapters.infrastructure.models import EventoModel, AsistenciaModel, SocioModel
+
+class AsistenciaInput(TypedDict):
+    socio_id: int
+    estado: str  # ASISTIO, FALTA, ATRASO, ETC.
+    observacion: str
 
 class RegistrarAsistenciaUseCase:
-    def __init__(self, asistencia_repo: IAsistenciaRepository):
-        self.asistencia_repo = asistencia_repo
+    """
+    Caso de Uso: Registrar Asistencia a Mingas/Asambleas.
+    Soporta carga masiva (Bulk) desde la App Móvil.
+    """
 
-    def execute(self, evento_id: int, socios_asistentes_ids: List[int]) -> bool:
-        """
-        Registra la asistencia de los socios indicados.
-        Los que no estén en la lista permanecerán con asistio=False (default).
-        """
-        # 1. Obtener todas las asistencias del evento
-        asistencias_existentes = self.asistencia_repo.get_by_evento(evento_id)
+    @transaction.atomic
+    def ejecutar(self, evento_id: int, asistencias: List[AsistenciaInput]) -> dict:
+        # 1. Validar Evento
+        try:
+            evento = EventoModel.objects.select_for_update().get(id=evento_id)
+        except EventoModel.DoesNotExist:
+            raise ValueError(f"Evento {evento_id} no existe.")
+
+        if evento.estado == EstadoEvento.CANCELADO.value:
+            raise ValueError(f"No se puede registrar asistencia en un evento CANCELADO.")
+            
+        # 2. Procesar Lista
+        procesados = 0
+        actualizados = 0
         
-        # 2. Iterar y actualizar
-        for asistencia in asistencias_existentes:
-            if asistencia.socio_id in socios_asistentes_ids:
-                if not asistencia.asistio:
-                    asistencia.asistio = True
-                    self.asistencia_repo.save(asistencia)
+        for item in asistencias:
+            socio_id = item['socio_id']
+            nuevo_estado = item['estado']
+            observacion = item.get('observacion', '')
+
+            # Validar estado permitido
+            if nuevo_estado not in [e.value for e in EstadoAsistencia]:
+                raise ValueError(f"Estado de asistencia inválido: {nuevo_estado}")
+
+            # Upsert (Crear o Actualizar)
+            # Usamos update_or_create para manejar re-envíos sin error
+            asistencia, created = AsistenciaModel.objects.update_or_create(
+                evento=evento,
+                socio_id=socio_id,
+                defaults={
+                    'estado': nuevo_estado,
+                    'observacion': observacion,
+                    'observacion': observacion
+                }
+            )
+            
+            if created:
+                procesados += 1
             else:
-                # Si estaba marcado y ahora no viene en la lista, ¿lo desmarcamos?
-                # Regla de negocio típica: La lista enviada es la "Lista de Presentes".
-                # Si alguien estaba presente y no está en la lista, se asume error de digitación previo y se corrige.
-                if asistencia.asistio:
-                    asistencia.asistio = False
-                    self.asistencia_repo.save(asistencia)
-                    
-        return True
+                actualizados += 1
+
+        # 3. Actualizar Estado del Evento (Si primera vez)
+        if evento.estado == EstadoEvento.PROGRAMADO.value and (procesados + actualizados) > 0:
+            evento.estado = EstadoEvento.REALIZADO.value # O EN_CURSO si quisiéramos
+            evento.save()
+
+        return {
+            "mensaje": "Asistencia registrada correctamente.",
+            "nuevos": procesados,
+            "actualizados": actualizados,
+            "total_asistentes": evento.asistencias.count()
+        }

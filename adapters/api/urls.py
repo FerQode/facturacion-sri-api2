@@ -8,10 +8,13 @@ from adapters.api.views import (
     CatalogoRubroViewSet,
     ProductoMaterialViewSet,
     ProcesarAbonoView,
-    ConsultarEstadoCuentaView
+    ProcesarAbonoView,
+    ConsultarEstadoCuentaView,
+    EventoViewSet
 )
 
 router = DefaultRouter()
+router.register(r'eventos', EventoViewSet, basename='evento')
 router.register(r'socios', SocioViewSet, basename='socio')
 router.register(r'facturas', FacturaViewSet, basename='factura')
 router.register(r'pagos', PagoViewSet, basename='pago')

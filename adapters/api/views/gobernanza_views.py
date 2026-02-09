@@ -2,150 +2,116 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from drf_spectacular.utils import extend_schema, OpenApiParameter
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-from core.use_cases.gobernanza.crear_evento_use_case import CrearEventoUseCase, CrearEventoRequest
-from core.use_cases.gobernanza.registrar_asistencia_use_case import RegistrarAsistenciaUseCase
-from core.use_cases.gobernanza.cerrar_evento_use_case import CerrarEventoYMultarUseCase
-from core.use_cases.gobernanza.procesar_justificacion_use_case import ProcesarJustificacionUseCase
-
-from core.domain.evento import TipoEvento
-from adapters.infrastructure.repositories.django_evento_repository import DjangoEventoRepository
-from adapters.infrastructure.repositories.django_asistencia_repository import DjangoAsistenciaRepository
-from adapters.infrastructure.repositories.django_socio_repository import DjangoSocioRepository
-from adapters.infrastructure.repositories.django_factura_repository import DjangoFacturaRepository
-from adapters.infrastructure.services.django_email_service import DjangoEmailService
-
-from adapters.infrastructure.models.evento_models import EventoModel, AsistenciaModel
+from adapters.infrastructure.models import EventoModel, SolicitudJustificacionModel
 from adapters.api.serializers.gobernanza_serializers import (
-    EventoSerializer, CrearEventoRequestSerializer, AsistenciaSerializer,
-    RegistrarAsistenciaRequestSerializer, ProcesarJustificacionRequestSerializer
+    EventoSerializer, 
+    RegistroAsistenciaSerializer,
+    ResumenMultasSerializer,
+    CrearSolicitudSerializer,
+    ResolucionSolicitudSerializer
 )
+from core.use_cases.gobernanza.registrar_asistencia_use_case import RegistrarAsistenciaUseCase
+from core.use_cases.gobernanza.procesar_multas_batch_use_case import ProcesarMultasBatchUseCase
+from core.use_cases.gobernanza.crear_solicitud_justificacion import CrearSolicitudJustificacionUseCase
+from core.use_cases.gobernanza.resolucion_solicitud_justificacion_use_case import ResolucionSolicitudJustificacionUseCase
 
 class EventoViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet principal para Gobernanza.
+    Maneja Eventos (CRUD) y acciones de negocio (Asistencia, Multas).
+    """
     queryset = EventoModel.objects.all().order_by('-fecha')
     serializer_class = EventoSerializer
+    permission_classes = [IsAuthenticated] # Ajustar según seguridad (IsAdminUser?)
 
-    def get_serializer_class(self):
-        if self.action == 'create':
-            return CrearEventoRequestSerializer
-        return EventoSerializer
-
-    @extend_schema(request=CrearEventoRequestSerializer)
-    def create(self, request, *args, **kwargs):
-        serializer = CrearEventoRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-
-        # Inicializar repositorios
-        evento_repo = DjangoEventoRepository()
-        asistencia_repo = DjangoAsistenciaRepository()
-        socio_repo = DjangoSocioRepository()
-
-        # Inicializar Use Case
-        use_case = CrearEventoUseCase(evento_repo, asistencia_repo, socio_repo)
-
-        # Ejecutar
-        try:
-            req = CrearEventoRequest(
-                nombre=data['nombre'],
-                tipo=TipoEvento(data['tipo']),
-                fecha=data['fecha'],
-                valor_multa=float(data['valor_multa']),
-                seleccion_socios=data['seleccion_socios'],
-                barrio_id=data.get('barrio_id'),
-                lista_socios_ids=data.get('lista_socios_ids')
-            )
-            evento = use_case.execute(req)
-            
-            return Response({
-                "id": evento.id,
-                "nombre": evento.nombre,
-                "estado": evento.estado.value,
-                "mensaje": "Evento creado exitosamente"
-            }, status=status.HTTP_201_CREATED)
-        except ValueError as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            # log e
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    @action(detail=True, methods=['get'])
-    def asistencia(self, request, pk=None):
-        """
-        Retorna la lista de asistencia del evento.
-        """
-        try:
-            evento = EventoModel.objects.get(pk=pk)
-        except EventoModel.DoesNotExist:
-            return Response({"error": "Evento no encontrado"}, status=status.HTTP_404_NOT_FOUND)
-
-        asistencias = AsistenciaModel.objects.filter(evento=evento).select_related('socio')
-        serializer = AsistenciaSerializer(asistencias, many=True)
-        return Response(serializer.data)
-
-    @action(detail=True, methods=['put'])
-    @extend_schema(request=RegistrarAsistenciaRequestSerializer)
+    @action(detail=True, methods=['post'], url_path='registrar-asistencia')
     def registrar_asistencia(self, request, pk=None):
         """
-        Actualiza los presentes. Recibe lista de IDs de socios que asistieron.
+        Endpoint p/ Carga Masiva de Asistencias.
+        POST /api/v1/eventos/{id}/registrar-asistencia/
+        Body: { "asistencias": [ { "socio_id": 1, "estado": "ASISTIO" } ] }
         """
-        serializer = RegistrarAsistenciaRequestSerializer(data=request.data)
+        # 1. Validar Input Serializer
+        # Inyectamos el ID del evento en el contexto o data si fuera necesario, 
+        # pero el serializer espera 'evento_id' explícito o lo manejamos aquí.
+        data = request.data.copy()
+        data['evento_id'] = pk 
+        
+        serializer = RegistroAsistenciaSerializer(data=data)
         serializer.is_valid(raise_exception=True)
         
-        # Repos y UseCase
-        asistencia_repo = DjangoAsistenciaRepository()
-        use_case = RegistrarAsistenciaUseCase(asistencia_repo)
-        
+        # 2. Ejecutar Use Case
+        use_case = RegistrarAsistenciaUseCase()
         try:
-            use_case.execute(pk, serializer.validated_data['socios_ids'])
-            return Response({"mensaje": "Asistencia actualizada correctamente"})
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    @action(detail=True, methods=['post'])
-    def cerrar(self, request, pk=None):
-        """
-        Cierra el evento y genera multas para los ausentes.
-        """
-        # Repositorios
-        evento_repo = DjangoEventoRepository()
-        asistencia_repo = DjangoAsistenciaRepository()
-        factura_repo = DjangoFacturaRepository()
-        email_service = DjangoEmailService()
-        socio_repo = DjangoSocioRepository()
-        
-        use_case = CerrarEventoYMultarUseCase(evento_repo, asistencia_repo, email_service, socio_repo)
-        
-        try:
-            from django.db import transaction
-            with transaction.atomic():
-                use_case.execute(pk)
-            return Response({"mensaje": "Evento cerrado y multas generadas exitosamente"})
+            resultado = use_case.ejecutar(
+                evento_id=pk,
+                asistencias=serializer.validated_data['asistencias']
+            )
+            return Response(resultado, status=status.HTTP_200_OK)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": "Error interno procesando asistencias.", "detalle": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    @action(detail=False, methods=['post'], url_path='justificar')
-    @extend_schema(request=ProcesarJustificacionRequestSerializer)
-    def justificar(self, request):
+    @action(detail=True, methods=['post'], url_path='procesar-multas')
+    def procesar_multas(self, request, pk=None):
         """
-        Procesa la justificación de una falta (Aprobar/Rechazar).
+        Endpoint "Martillo": Genera Deuda por Inasistencia.
+        POST /api/v1/eventos/{id}/procesar-multas/
         """
-        serializer = ProcesarJustificacionRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-        
-        asistencia_repo = DjangoAsistenciaRepository()
-        factura_repo = DjangoFacturaRepository()
-        
-        use_case = ProcesarJustificacionUseCase(asistencia_repo, factura_repo)
-        
+        use_case = ProcesarMultasBatchUseCase()
         try:
-            use_case.execute(data['asistencia_id'], data['decision'], data.get('observacion', ''))
-            return Response({"mensaje": f"Justificación {data['decision']} correctamente"})
+            resultado = use_case.ejecutar(evento_id=pk)
+            output_serializer = ResumenMultasSerializer(resultado)
+            return Response(output_serializer.data, status=status.HTTP_200_OK)
+        except ValueError as e:
+             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": "Error generando multas.", "detalle": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class SolicitudJustificacionViewSet(viewsets.ViewSet):
+    """
+    Gestiona las solicitudes de justificación (Crear, Revisar, Resolver).
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = (MultiPartParser, FormParser, JSONParser) # Para subir archivos
+
+    def create(self, request):
+        """
+        Crear nueva solicitud (Socio o Admin).
+        POST /api/v1/justificaciones/
+        """
+        serializer = CrearSolicitudSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        use_case = CrearSolicitudJustificacionUseCase()
+        try:
+            resultado = use_case.ejecutar(serializer.validated_data)
+            return Response(resultado, status=status.HTTP_201_CREATED)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": "Error creando solicitud.", "detalle": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=True, methods=['post'], url_path='resolver')
+    def resolver(self, request, pk=None):
+        """
+        Resolver solicitud (Admin).
+        POST /api/v1/justificaciones/{id}/resolver/
+        """
+        serializer = ResolucionSolicitudSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        use_case = ResolucionSolicitudJustificacionUseCase()
+        try:
+            resultado = use_case.ejecutar(
+                solicitud_id=pk, 
+                nuevo_estado=serializer.validated_data['estado'],
+                observacion_admin=serializer.validated_data.get('observacion_admin', '')
+            )
+            return Response(resultado, status=status.HTTP_200_OK)
+        except ValueError as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)

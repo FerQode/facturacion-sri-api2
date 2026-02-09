@@ -14,7 +14,7 @@ from .factura_model import FacturaModel, DetalleFacturaModel
 from .multa_model import MultaModel
 from .pago_model import PagoModel, DetallePagoModel
 from .servicio_model import ServicioModel
-from .evento_models import EventoModel, AsistenciaModel, SolicitudJustificacionModel
+from .gobernanza_models import EventoModel, AsistenciaModel, SolicitudJustificacionModel
 from .sri_models import SRISecuencialModel
 from .catalogo_models import CatalogoRubroModel
 from .cuenta_por_cobrar_model import CuentaPorCobrarModel
