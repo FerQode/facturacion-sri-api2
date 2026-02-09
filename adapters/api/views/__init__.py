@@ -27,3 +27,7 @@ from .billing_views import ProcesarAbonoView, ConsultarEstadoCuentaView
 
 # SERVICE MANAGEMENT (Fase 3)
 from .servicio_views import CortesViewSet, OrdenTrabajoViewSet
+
+# POS & INVENTARIO (Fase 4)
+from .pos_views import POSViewSet
+from .inventario_views import InventarioViewSet

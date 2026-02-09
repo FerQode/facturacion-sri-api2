@@ -1,4 +1,5 @@
 # adapters/api/views/billing_views.py
+# Fixed indentation
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -104,9 +105,15 @@ class ConsultarEstadoCuentaView(APIView):
                 'concepto': concepto,
                 'saldo_pendiente': c.saldo_pendiente,
                 # Corrección de Esquema: Usar monto_inicial en lugar de monto_total
-                'total_original': c.monto_inicial
+                'total_original': c.monto_inicial,
+                
+                # --- UX ENRICHMENT ---
+                'nombre_terreno': _get_nombre_terreno(c),
+                'tiene_medidor': _check_tiene_medidor(c),
+                'detalle_consumo': _get_detalle_consumo(c),
+                'mes_facturado': _get_mes_facturado(c)
             })
-            
+
         data = {
             'socio_id': socio.id,
             'nombre_socio': f"{socio.apellidos} {socio.nombres}".strip(),
@@ -119,3 +126,36 @@ class ConsultarEstadoCuentaView(APIView):
         
         serializer = EstadoCuentaSerializer(data)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+def _get_nombre_terreno(cuenta):
+    if cuenta.factura and cuenta.factura.servicio and cuenta.factura.servicio.terreno:
+        t = cuenta.factura.servicio.terreno
+        return f"{t.ubicacion} (Mz {t.manzana or '-'} Lote {t.numero_lote or '-'})"
+    return "N/A"
+
+def _check_tiene_medidor(cuenta):
+    if cuenta.factura and cuenta.factura.servicio:
+        return cuenta.factura.servicio.tipo == 'MEDIDO'
+    return False
+
+def _get_detalle_consumo(cuenta):
+    if not cuenta.factura:
+        return "N/A"
+        
+    fac = cuenta.factura
+    if fac.servicio and fac.servicio.tipo == 'MEDIDO' and fac.lectura:
+        lect = fac.lectura
+        ant = lect.lectura_anterior or 0
+        act = lect.valor
+        cons = lect.consumo_del_mes
+        return f"Lectura: {ant} -> {act} ({cons} m3)"
+    elif fac.servicio and fac.servicio.tipo == 'FIJO':
+        return "Tarifa Fija (Sin Medidor)"
+    return "Consumo General"
+
+def _get_mes_facturado(cuenta):
+    if cuenta.factura:
+        meses = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun', 
+                 7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
+        return f"{meses.get(cuenta.factura.mes, 'Unknown')} {cuenta.factura.anio}"
+    return "Varios"

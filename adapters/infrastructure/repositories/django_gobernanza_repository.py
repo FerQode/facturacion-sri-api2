@@ -2,7 +2,7 @@
 from typing import List, Any
 from core.interfaces.repositories import IGobernanzaRepository
 from core.domain.asistencia import EstadoAsistencia
-from adapters.infrastructure.models.evento_models import AsistenciaModel
+from adapters.infrastructure.models import AsistenciaModel
 
 class DjangoGobernanzaRepository(IGobernanzaRepository):
     

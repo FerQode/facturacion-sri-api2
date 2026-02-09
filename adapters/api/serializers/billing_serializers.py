@@ -56,6 +56,12 @@ class DeudaItemSerializer(serializers.Serializer):
     concepto = serializers.CharField(help_text="Descripción de la deuda (ej: Factura 001-001-123)")
     saldo_pendiente = serializers.DecimalField(max_digits=10, decimal_places=2)
     total_original = serializers.DecimalField(max_digits=10, decimal_places=2)
+    
+    # --- UX FIELDS (Para mostrar en Frontend) ---
+    nombre_terreno = serializers.CharField(required=False, allow_null=True)
+    tiene_medidor = serializers.BooleanField(default=False)
+    detalle_consumo = serializers.CharField(required=False, allow_null=True)
+    mes_facturado = serializers.CharField(required=False, allow_null=True)
 
 class EstadoCuentaSerializer(serializers.Serializer):
     """

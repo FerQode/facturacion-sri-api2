@@ -1,0 +1,8 @@
+# adapters/infrastructure/repositories/__init__.py
+from .django_socio_repository import DjangoSocioRepository as SocioRepository
+from .django_terreno_repository import DjangoTerrenoRepository as TerrenoRepository
+from .django_servicio_repository import DjangoServicioRepository as ServicioRepository
+from .django_medidor_repository import DjangoMedidorRepository as MedidorRepository
+from .django_lectura_repository import DjangoLecturaRepository as LecturaRepository
+from .django_factura_repository import DjangoFacturaRepository as FacturaRepository
+from .django_gobernanza_repository import DjangoGobernanzaRepository as GobernanzaRepository

@@ -48,3 +48,6 @@ db.sqlite3
 media/
 staticfiles/
 modelos_actuales.txt
+
+# Scripts locales
+scripts/

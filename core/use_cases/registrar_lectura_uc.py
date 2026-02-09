@@ -29,7 +29,7 @@ class RegistrarLecturaUseCase:
         # 2. Obtener la última lectura para determinar la base de cálculo
         ultima_lectura = self.lectura_repo.get_latest_by_medidor(input_dto.medidor_id)
         
-        lectura_anterior_valor = 0.0
+        lectura_anterior_valor = medidor.lectura_inicial
         if ultima_lectura:
             lectura_anterior_valor = float(ultima_lectura.valor)
 

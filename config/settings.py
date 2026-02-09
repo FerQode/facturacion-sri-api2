@@ -82,6 +82,7 @@ INSTALLED_APPS = [
     'storages', # AWS S3 Support
 
     # Local Apps
+    'core',
     'adapters.api.apps.ApiConfig',
     'adapters.infrastructure.apps.InfrastructureConfig',
 ]
@@ -227,6 +228,8 @@ if DEBUG:
 else:
     CORS_ALLOW_ALL_ORIGINS = False
     CORS_ALLOWED_ORIGINS = get_env_list('CORS_ALLOWED_ORIGINS')
+    # HYBRID TESTING: Allow localhost explicitly for local frontend dev against prod backend
+    CORS_ALLOWED_ORIGINS.extend(["http://localhost:4200", "http://127.0.0.1:4200"])
     CORS_ALLOW_CREDENTIALS = True
 
 # ==============================================================================
