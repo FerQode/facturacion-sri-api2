@@ -1,6 +1,6 @@
-from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
+from datetime import timedelta
 from decimal import Decimal
 import random
 
@@ -77,7 +77,7 @@ class Command(BaseCommand):
                 socio=socio,
                 servicio=servicio,
                 fecha_emision=timezone.now().date(),
-                fecha_vencimiento=timezone.now().date() + timezone.timedelta(days=30),
+                fecha_vencimiento=timezone.now().date() + timedelta(days=30),
                 subtotal=Decimal('5.00'),
                 total=Decimal('5.00'),
                 estado=EstadoFactura.PENDIENTE.value
