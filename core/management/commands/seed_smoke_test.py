@@ -77,7 +77,7 @@ class Command(BaseCommand):
                 socio=socio,
                 servicio=servicio,
                 fecha_emision=timezone.now().date(),
-                fecha_vencimiento=timezone.now().date(),
+                fecha_vencimiento=timezone.now().date() + timezone.timedelta(days=30),
                 subtotal=Decimal('5.00'),
                 total=Decimal('5.00'),
                 estado=EstadoFactura.PENDIENTE.value
