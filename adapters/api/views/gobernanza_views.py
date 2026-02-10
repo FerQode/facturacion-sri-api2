@@ -115,3 +115,25 @@ class SolicitudJustificacionViewSet(viewsets.ViewSet):
             return Response(resultado, status=status.HTTP_200_OK)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class AsistenciaViewSet(viewsets.ModelViewSet):
+    """
+    CRUD de Asistencias (Individual). 
+    Complementa la carga masiva de Eventos.
+    """
+    from adapters.infrastructure.models import AsistenciaModel
+    queryset = AsistenciaModel.objects.select_related('socio', 'evento').all()
+    # Serializer inline para no romper dependencias circulares si no existe archivo
+    from rest_framework import serializers
+    class AsistenciaInlineSerializer(serializers.ModelSerializer):
+        socio_nombre = serializers.CharField(source='socio.nombres', read_only=True)
+        evento_nombre = serializers.CharField(source='evento.nombre', read_only=True)
+        class Meta:
+            model = AsistenciaModel
+            fields = '__all__'
+    
+    serializer_class = AsistenciaInlineSerializer
+    permission_classes = [IsAuthenticated]
+    from rest_framework import filters
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['socio__identificacion', 'evento__nombre']

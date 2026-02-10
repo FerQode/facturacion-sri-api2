@@ -1,17 +1,22 @@
+# adapters/api/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
 from adapters.api.views import (
-    # Core/Legacy
-    AnalyticsViewSet, BarrioViewSet, CobroViewSet, InventarioViewSet, POSViewSet,
-    UserProfileView, DescargarRideView, ConsultarEstadoCuentaView, ProcesarAbonoView,
-    # Comercial
-    SocioViewSet, FacturaViewSet, PagoViewSet, CatalogoRubroViewSet, ProductoMaterialViewSet,
+    # Core
+    AnalyticsViewSet, CobroViewSet, POSViewSet, UserProfileView, 
+    DescargarRideView, ConsultarEstadoCuentaView, ProcesarAbonoView,
+    # Granulares (Nativos)
+    BarrioViewSet, InventarioViewSet, LecturaViewSet, MedidorViewSet, 
+    MultaViewSet, OrdenTrabajoViewSet, CortesViewSet, SocioViewSet, TerrenoViewSet,
+    ServicioAguaViewSet,
+    # Comercial Helpers
+    FacturaViewSet, PagoViewSet, CatalogoRubroViewSet, ProductoMaterialViewSet,
     # Gobernanza
-    EventoViewSet, SolicitudJustificacionViewSet,
-    # Extra Modules
-    AsistenciaViewSet, MultaViewSet, OrdenTrabajoViewSet, CortesViewSet, MedidorViewSet, CobroLecturaViewSet
+    EventoViewSet, SolicitudJustificacionViewSet, AsistenciaViewSet,
+    # Extras Integrados
+    CobroLecturaViewSet
 )
 
 router = DefaultRouter()
@@ -19,14 +24,14 @@ router = DefaultRouter()
 # --- 1. Comercial & Clientes ---
 router.register(r'socios', SocioViewSet, basename='socio')
 router.register(r'barrios', BarrioViewSet, basename='barrio')
+router.register(r'terrenos', TerrenoViewSet, basename='terreno')
 router.register(r'rubros', CatalogoRubroViewSet, basename='rubro')
 
 # --- 2. Financiero & Billing ---
-# CobroViewSet es complejo (Acciones). CobroLectura es para listar deudas.
-router.register(r'cobros', CobroViewSet, basename='cobro') 
-router.register(r'cobros-consulta', CobroLecturaViewSet, basename='cobro-consulta')
-router.register(r'facturas', FacturaViewSet, basename='factura') # Solo lectura segun comercial_views
-router.register(r'pagos', PagoViewSet, basename='pago')
+router.register(r'cobros', CobroViewSet, basename='cobro')             # Ventanilla
+router.register(r'cobros-consulta', CobroLecturaViewSet, basename='cobro-consulta') # Grid Deuda
+router.register(r'facturas', FacturaViewSet, basename='factura')       # Historial
+router.register(r'pagos', PagoViewSet, basename='pago')                # Historial Pagos
 router.register(r'analytics', AnalyticsViewSet, basename='analytics')
 
 # --- 3. Gobernanza ---
@@ -39,11 +44,13 @@ router.register(r'solicitudes-justificacion', SolicitudJustificacionViewSet, bas
 router.register(r'ordenes-trabajo', OrdenTrabajoViewSet, basename='orden-trabajo')
 router.register(r'cortes', CortesViewSet, basename='corte')
 router.register(r'medidores', MedidorViewSet, basename='medidor')
+router.register(r'lecturas', LecturaViewSet, basename='lectura')
+router.register(r'servicios-agua', ServicioAguaViewSet, basename='servicio-agua')
 
 # --- 5. Inventario & POS ---
-router.register(r'inventario', InventarioViewSet, basename='inventario')
-router.register(r'materiales', ProductoMaterialViewSet, basename='material') # Alias si se requiere
-router.register(r'pos', POSViewSet, basename='pos')
+router.register(r'inventario', InventarioViewSet, basename='inventario')       # POS Query
+router.register(r'materiales', ProductoMaterialViewSet, basename='material')   # CRUD Inventario
+router.register(r'pos', POSViewSet, basename='pos')                            # Venta
 
 
 urlpatterns = [

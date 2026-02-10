@@ -247,3 +247,23 @@ class CobroViewSet(viewsets.ViewSet):
             return Response({"error": "Pago no encontrado"}, status=404)
         except Exception as e:
             return Response({"error": "Error procesando validación", "detalle": str(e)}, status=500)
+
+class CobroLecturaViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Vista de Lectura de Cuentas por Cobrar.
+    Optimizado para Grids de Deudas.
+    """
+    queryset = CuentaPorCobrarModel.objects.select_related('socio', 'rubro').all().order_by('-fecha_emision')
+    from rest_framework import serializers
+    class CobroLecturaSerializer(serializers.ModelSerializer):
+        socio_nombre = serializers.CharField(source='socio.nombres', read_only=True)
+        rubro_nombre = serializers.CharField(source='rubro.nombre', read_only=True)
+        class Meta:
+            model = CuentaPorCobrarModel
+            fields = '__all__'
+
+    serializer_class = CobroLecturaSerializer
+    permission_classes = [viewsets.permissions.IsAuthenticated]
+    from rest_framework import filters
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['socio__identificacion', 'socio__nombres']
