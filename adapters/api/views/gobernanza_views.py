@@ -1,31 +1,42 @@
 # adapters/api/views/gobernanza_views.py
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, serializers, filters, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-from adapters.infrastructure.models import EventoModel, SolicitudJustificacionModel
+# Modelos
+from adapters.infrastructure.models import (
+    EventoModel, SolicitudJustificacionModel, AsistenciaModel
+)
+# Serializers Externos
 from adapters.api.serializers.gobernanza_serializers import (
-    EventoSerializer, 
-    RegistroAsistenciaSerializer,
-    ResumenMultasSerializer,
-    CrearSolicitudSerializer,
+    EventoSerializer, RegistroAsistenciaSerializer,
+    ResumenMultasSerializer, CrearSolicitudSerializer,
     ResolucionSolicitudSerializer
 )
+# Use Cases
 from core.use_cases.gobernanza.registrar_asistencia_use_case import RegistrarAsistenciaUseCase
 from core.use_cases.gobernanza.procesar_multas_batch_use_case import ProcesarMultasBatchUseCase
 from core.use_cases.gobernanza.crear_solicitud_justificacion import CrearSolicitudJustificacionUseCase
 from core.use_cases.gobernanza.resolucion_solicitud_justificacion_use_case import ResolucionSolicitudJustificacionUseCase
 
+# --- SERIALIZERS LOCALES ---
+class AsistenciaInlineSerializer(serializers.ModelSerializer):
+    socio_nombre = serializers.CharField(source='socio.nombres', read_only=True)
+    evento_nombre = serializers.CharField(source='evento.nombre', read_only=True)
+    class Meta:
+        model = AsistenciaModel
+        fields = '__all__'
+
+# --- VISTAS ---
+
 class EventoViewSet(viewsets.ModelViewSet):
     """
-    ViewSet principal para Gobernanza.
-    Maneja Eventos (CRUD) y acciones de negocio (Asistencia, Multas).
+    Maneja Eventos (CRUD) y acciones de negocio.
     """
     queryset = EventoModel.objects.all().order_by('-fecha')
     serializer_class = EventoSerializer
-    permission_classes = [IsAuthenticated] # Ajustar según seguridad (IsAdminUser?)
+    permission_classes = [permissions.IsAuthenticated]
 
     @action(detail=True, methods=['post'], url_path='registrar-asistencia')
     def registrar_asistencia(self, request, pk=None):
@@ -35,8 +46,6 @@ class EventoViewSet(viewsets.ModelViewSet):
         Body: { "asistencias": [ { "socio_id": 1, "estado": "ASISTIO" } ] }
         """
         # 1. Validar Input Serializer
-        # Inyectamos el ID del evento en el contexto o data si fuera necesario, 
-        # pero el serializer espera 'evento_id' explícito o lo manejamos aquí.
         data = request.data.copy()
         data['evento_id'] = pk 
         
@@ -76,7 +85,7 @@ class SolicitudJustificacionViewSet(viewsets.ViewSet):
     """
     Gestiona las solicitudes de justificación (Crear, Revisar, Resolver).
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
     parser_classes = (MultiPartParser, FormParser, JSONParser) # Para subir archivos
 
     def create(self, request):
@@ -115,25 +124,15 @@ class SolicitudJustificacionViewSet(viewsets.ViewSet):
             return Response(resultado, status=status.HTTP_200_OK)
         except ValueError as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({"error": "Error interno.", "detalle": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class AsistenciaViewSet(viewsets.ModelViewSet):
     """
     CRUD de Asistencias (Individual). 
-    Complementa la carga masiva de Eventos.
     """
-    from adapters.infrastructure.models import AsistenciaModel
     queryset = AsistenciaModel.objects.select_related('socio', 'evento').all()
-    # Serializer inline para no romper dependencias circulares si no existe archivo
-    from rest_framework import serializers
-    class AsistenciaInlineSerializer(serializers.ModelSerializer):
-        socio_nombre = serializers.CharField(source='socio.nombres', read_only=True)
-        evento_nombre = serializers.CharField(source='evento.nombre', read_only=True)
-        class Meta:
-            model = AsistenciaModel
-            fields = '__all__'
-    
     serializer_class = AsistenciaInlineSerializer
-    permission_classes = [IsAuthenticated]
-    from rest_framework import filters
+    permission_classes = [permissions.IsAuthenticated]
     filter_backends = [filters.SearchFilter]
     search_fields = ['socio__identificacion', 'evento__nombre']

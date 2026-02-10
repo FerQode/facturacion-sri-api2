@@ -1,5 +1,5 @@
 # adapters/api/views/cobro_views.py
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, serializers, filters, permissions
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -7,34 +7,38 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter
 from django.db import transaction, models
 from decimal import Decimal
 
-# Imports del Dominio
+# Imports del Dominio y Modelos
 from core.use_cases.registrar_cobro_uc import RegistrarCobroUseCase
-from core.shared.enums import MetodoPagoEnum, EstadoFactura
+from core.shared.enums import MetodoPagoEnum, EstadoFactura, EstadoCuentaPorCobrar
+import re
 from core.shared.exceptions import BusinessRuleException, EntityNotFoundException
-
-# Modelos (Para lectura/validación)
-from adapters.infrastructure.models.factura_model import FacturaModel
-from adapters.infrastructure.models.pago_model import PagoModel, DetallePagoModel
-from adapters.infrastructure.models.cuenta_por_cobrar_model import CuentaPorCobrarModel
-from adapters.infrastructure.models.servicio_model import ServicioModel
-
-# Implementaciones Concretas (Infraestructura)
+from adapters.infrastructure.models import (
+    FacturaModel, PagoModel, DetallePagoModel, 
+    CuentaPorCobrarModel, ServicioModel
+)
 from adapters.infrastructure.repositories.django_factura_repository import DjangoFacturaRepository
 from adapters.infrastructure.repositories.django_pago_repository import DjangoPagoRepository
 from adapters.infrastructure.services.django_sri_service import DjangoSRIService
 from adapters.infrastructure.services.django_email_service import DjangoEmailService
-
-# Serializers
 from adapters.api.serializers.factura_serializers import (
-    RegistrarCobroSerializer,
-    ReportarPagoSerializer,
-    ValidarPagoSerializer
+    RegistrarCobroSerializer, ReportarPagoSerializer, ValidarPagoSerializer
 )
+
+# --- SERIALIZERS LOCALES (Extraídos para limpieza) ---
+class CobroLecturaSerializer(serializers.ModelSerializer):
+    socio_nombre = serializers.CharField(source='socio.nombres', read_only=True)
+    rubro_nombre = serializers.CharField(source='rubro.nombre', read_only=True)
+    class Meta:
+        model = CuentaPorCobrarModel
+        fields = '__all__'
+
+# --- VISTAS ---
 
 class CobroViewSet(viewsets.ViewSet):
     """
     Controlador de Recaudación (Caja y Validaciones).
     """
+    permission_classes = [permissions.IsAuthenticated]
 
     # --------------------------------------------------------------------------
     # 1. COBRO EN VENTANILLA (Tesorero)
@@ -150,7 +154,7 @@ class CobroViewSet(viewsets.ViewSet):
             data.append({
                 "pago_id": p.id,
                 "socio": f"{p.socio.nombres} {p.socio.apellidos}",
-                "cedula": p.socio.cedula,
+                "cedula": getattr(p.socio, "cedula", None) or getattr(p.socio, "identificacion", ""),
                 "fecha": p.fecha_registro.strftime("%Y-%m-%d %H:%M"),
                 "monto": p.monto_total,
                 "referencia": referencia,
@@ -175,15 +179,24 @@ class CobroViewSet(viewsets.ViewSet):
 
             if accion == 'RECHAZAR':
                 # Si se rechaza, eliminamos el intento para permitir subir otro
-                detalle = p.detalles_metodos.first() if hasattr(pago, 'detalles_metodos') else pago.detalles_metodos.first()
+                detalle = pago.detalles_metodos.first()
                 if detalle and detalle.comprobante_imagen:
                      detalle.comprobante_imagen.delete() # Limpieza S3
+                
+                # 3. Revertir estado de Factura (Si aplica)
+                # Hack: Extraer ID de la observación "Pago web para Factura #123"
+                match = re.search(r"Factura #(\d+)", pago.observacion or "")
+                if match:
+                    factura_id = int(match.group(1))
+                    FacturaModel.objects.filter(pk=factura_id).update(estado=EstadoFactura.PENDIENTE.value)
+
                 pago.delete()
                 
                 return Response({
                     "mensaje": "Pago rechazado y eliminado.",
                     "estado": "RECHAZADO",
-                    "pago_id": pago_id
+                    "pago_id": pago_id,
+                    "motivo_rechazo": motivo
                 }, status=200)
 
             elif accion == 'APROBAR':
@@ -211,7 +224,7 @@ class CobroViewSet(viewsets.ViewSet):
                     abono = min(cuenta.saldo_pendiente, monto_disponible)
                     cuenta.saldo_pendiente -= abono
                     if cuenta.saldo_pendiente == 0:
-                        cuenta.estado = 'PAGADA'
+                        cuenta.estado = EstadoCuentaPorCobrar.PAGADA.value
                         # Si tiene factura ligada, actualizar su estado (si aplica)
                         if cuenta.factura:
                             cuenta.factura.estado = EstadoFactura.PAGADA.value
@@ -254,16 +267,7 @@ class CobroLecturaViewSet(viewsets.ReadOnlyModelViewSet):
     Optimizado para Grids de Deudas.
     """
     queryset = CuentaPorCobrarModel.objects.select_related('socio', 'rubro').all().order_by('-fecha_emision')
-    from rest_framework import serializers
-    class CobroLecturaSerializer(serializers.ModelSerializer):
-        socio_nombre = serializers.CharField(source='socio.nombres', read_only=True)
-        rubro_nombre = serializers.CharField(source='rubro.nombre', read_only=True)
-        class Meta:
-            model = CuentaPorCobrarModel
-            fields = '__all__'
-
     serializer_class = CobroLecturaSerializer
-    permission_classes = [viewsets.permissions.IsAuthenticated]
-    from rest_framework import filters
+    permission_classes = [permissions.IsAuthenticated]
     filter_backends = [filters.SearchFilter]
     search_fields = ['socio__identificacion', 'socio__nombres']

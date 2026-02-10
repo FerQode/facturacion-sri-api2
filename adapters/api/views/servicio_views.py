@@ -1,24 +1,25 @@
 # adapters/api/views/servicio_views.py
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, serializers, filters, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 
+# Modelos
 from adapters.infrastructure.models import ServicioModel, OrdenTrabajoModel
+
+# Serializers
 from adapters.api.serializers.servicio_serializers import (
-    OrdenTrabajoSerializer, 
-    CompletarOrdenSerializer, ProcesarCortesBatchSerializer
+    OrdenTrabajoSerializer, CompletarOrdenSerializer, ProcesarCortesBatchSerializer
 )
+# Use Cases y Tasks
 from core.use_cases.servicio.completar_orden_trabajo_use_case import CompletarOrdenTrabajoUseCase
 from core.tasks.procesar_cortes_task import procesar_cortes_masivos_task
-
 
 class CortesViewSet(viewsets.ViewSet):
     """
     Gestión de Cortes Masivos.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
 
     @action(detail=False, methods=['post'], url_path='procesar-batch')
     def procesar_batch(self, request):
@@ -46,14 +47,18 @@ class OrdenTrabajoViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = OrdenTrabajoModel.objects.all().order_by('-fecha_generacion')
     serializer_class = OrdenTrabajoSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated]
     parser_classes = (MultiPartParser, FormParser)
+    
+    # ✅ Habilitamos búsqueda para el Frontend
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['servicio__socio__identificacion', '=id']
 
     @action(detail=True, methods=['post'], url_path='completar')
     def completar(self, request, pk=None):
         """
         Completar Orden con Evidencia.
-        POST /api/v1/ordenes/{id}/completar/
+        POST /api/v1/ordenes-trabajo/{id}/completar/
         Form-Data: { archivo_evidencia: <File>, observacion: "..." }
         """
         serializer = CompletarOrdenSerializer(data=request.data)

@@ -51,6 +51,7 @@ class EstadoCuentaPorCobrar(Enum):
     EN_PROCESO_JUSTIFICACION = "EN_PROCESO_JUSTIFICACION"
     PAGADA_PARCIALMENTE = "PAGADA_PARCIALMENTE"
     FACTURADO = "FACTURADO" # Ya se emitió factura legal
+    PAGADA = "PAGADA"
     ANULADO = "ANULADO"
 
 class TipoEvento(Enum):
