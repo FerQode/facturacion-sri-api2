@@ -1,3 +1,4 @@
+# adapters/infrastructure/repositories/django_socio_repository.py
 from typing import List, Optional
 from core.domain.socio import Socio
 from core.interfaces.repositories import ISocioRepository
@@ -45,7 +46,8 @@ class DjangoSocioRepository(ISocioRepository):
             esta_activo=getattr(model, 'esta_activo', True),
             rol=rol_valor,
             # Mapeo seguro del usuario de sistema
-            usuario_id=model.usuario_id if hasattr(model, 'usuario') and model.usuario else None
+            usuario_id=model.usuario_id if hasattr(model, 'usuario') and model.usuario else None,
+            _validate=False  # Hidratación segura para lecturas
         )
 
     # =================================================================

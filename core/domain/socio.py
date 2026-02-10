@@ -35,16 +35,23 @@ class Socio:
     discapacidad: bool = False
     tercera_edad: bool = False
 
+    # Flag para controlar validación (útil para hidratación desde BD con data histórica sucia)
+    from dataclasses import InitVar
+    _validate: InitVar[bool] = True
+
     @property
     def nombre_completo(self) -> str:
         """Helper para mostrar nombre legible"""
         return f"{self.nombres} {self.apellidos}"
 
-    def __post_init__(self):
+    def __post_init__(self, _validate):
         """
         Validación de Dominio Puro:
         Asegura que la identificación sea matemáticamente válida según el algoritmo del SRI.
         """
+        if not _validate:
+            return
+
         # Solo validamos si tenemos el dato (al crear/actualizar)
         if self.identificacion and self.tipo_identificacion:
             try:

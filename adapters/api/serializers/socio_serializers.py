@@ -56,15 +56,40 @@ class CrearSocioSerializer(serializers.Serializer):
         """ 
         Validación cruzada y algorítmica usando el Dominio Puro 
         """
+        # 1. Validación de Formato (Longitud vs Tipo)
+        tipo = data.get('tipo_identificacion')
+        identificacion = data.get('identificacion', '')
+        
+        # Importamos el modelo solo para acceder a las constantes de choices si es necesario,
+        # o usamos literales 'C', 'R', 'P' que coinciden con el ChoiceField.
+        
+        if tipo == 'C':
+            if len(identificacion) != 10:
+                raise serializers.ValidationError({
+                    "identificacion": "La Cédula requiere exactamente 10 dígitos. Si es RUC, cambie el tipo a 'R'."
+                })
+        elif tipo == 'R':
+            if len(identificacion) != 13:
+                raise serializers.ValidationError({
+                    "identificacion": "El RUC requiere exactamente 13 dígitos."
+                })
+        elif tipo == 'P':
+            if len(identificacion) < 5:
+                raise serializers.ValidationError({
+                    "identificacion": "El Pasaporte debe tener al menos 5 caracteres."
+                })
+
+        # 2. Validación de Algoritmo (Dominio)
         from core.domain.socio import Socio
         
         # Validamos usando la entidad de dominio (DRY - Don't Repeat Yourself)
         try:
             # Creamos una instancia "dummy" solo para validar
+            # Nota: Al no pasar _validate, usa el default True (que es lo que queremos)
             Socio(
                 id=None,
-                identificacion=data.get('identificacion'),
-                tipo_identificacion=data.get('tipo_identificacion'),
+                identificacion=identificacion,
+                tipo_identificacion=tipo,
                 nombres=data.get('nombres'),
                 apellidos=data.get('apellidos')
             )
