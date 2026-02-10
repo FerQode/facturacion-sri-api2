@@ -1,33 +1,18 @@
 # adapters/api/views/__init__.py
 
-# Este archivo expone las vistas para que puedan ser importadas fácilmente
-from .comercial_views import (
-    SocioViewSet, 
-    FacturaViewSet, 
-    PagoViewSet, 
-    CatalogoRubroViewSet, 
-    ProductoMaterialViewSet
-)
-
-from .lectura_views import LecturaViewSet
-from .factura_views import DescargarRideView
-from .sri_views import SRIViewSet
-from .medidor_views import MedidorViewSet
-from .barrio_views import BarrioViewSet
-from .terreno_views import TerrenoViewSet
-from .multa_views import MultaViewSet
-from .servicio_agua_views import ServicioAguaViewSet
-from .gobernanza_views import EventoViewSet
+# Vistas Reales
 from .analytics_views import AnalyticsViewSet
-from .usuario_views import UserProfileView
+from .barrio_views import BarrioViewSet
+from .billing_views import ConsultarEstadoCuentaView, ProcesarAbonoView
 from .cobro_views import CobroViewSet
-
-# BILLING MODULE (Nuevo v5.1)
-from .billing_views import ProcesarAbonoView, ConsultarEstadoCuentaView
-
-# SERVICE MANAGEMENT (Fase 3)
-from .servicio_views import CortesViewSet, OrdenTrabajoViewSet
-
-# POS & INVENTARIO (Fase 4)
-from .pos_views import POSViewSet
+from .factura_views import DescargarRideView
 from .inventario_views import InventarioViewSet
+from .pos_views import POSViewSet
+from .usuario_views import UserProfileView
+
+# Placeholders (Stubs)
+from .placeholder_views import (
+    EventoViewSet,
+    CortesViewSet,
+    OrdenTrabajoViewSet
+)
